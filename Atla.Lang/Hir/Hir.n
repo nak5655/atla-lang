@@ -1,0 +1,125 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using Nemerle.Imperative;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+/**
+脱糖済み
+型推論の対象
+第一級関数の展開
+**/
+namespace Atla.Lang.Hir
+{
+    public variant Error {
+        | DuplicatedDeclaration { name: string; type: Type; already: Type }
+        | TypeUnificationFailure { refered: Type; referer: Type }
+        | TypeRecursiveReference { a: Type; b: Type }
+        | UndefinedReference { name: string; type: Type }
+    }
+    
+    // a.k.a SymbolTable or Environment
+    public class Scope {
+        parent: option[Scope];
+        varTable: Hashtable[string, list[Hir.Type]];
+        typeTable: Hashtable[string, Type];
+        
+        public this(parent: option[Scope]) {
+            this.parent = parent;
+            varTable = Hashtable();
+            typeTable = Hashtable();
+        }
+        
+        public declareType(name: string, type: Type): void {
+            typeTable.Add(name, type)
+        }
+        
+        public resolveType(name: string): option[Type] {
+            typeTable.Get(name)
+        }
+        
+        public declareVar(id: string, type: Type): option[Error] {
+            match (resolveVar(id, type)) {
+                | Hir.Type.Err => ()
+                | t => return Some(Error.DuplicatedDeclaration(id, type, t));
+            }
+            
+            if (varTable.ContainsKey(id)) {
+                def types = varTable.Get(id).Value;
+
+                varTable.Set(id, types + [type]);
+                None()
+            } else {
+                varTable.Set(id, [type]);
+                None()
+            }
+        }
+        
+        public declareVar(id: string): option[Error] {
+            declareVar(id, Type.Var(None()))
+        }
+        
+        public resolveVar(id: string, type: Type): Type {
+            if (varTable.ContainsKey(id)) {
+                def types = varTable.Get(id).Value;
+                match (types.Find(t => t.canUnify(type))) {
+                    | Some(t) => t
+                    | _ => Hir.Type.Err(Hir.Error.UndefinedReference(id, type))
+                }
+                
+            } else {
+                match (parent) {
+                    | Some(p) => p.resolveVar(id, type)
+                    | _ => Hir.Type.Err(Hir.Error.UndefinedReference(id, type))
+                }
+            }
+        }
+    }
+    
+    public variant Stmt {
+        | Expr { expr: Hir.Expr }
+        | Return { value: Hir.Expr }
+    }
+    
+    public variant Expr {
+        | Block { stmts: list[Stmt]; scope: Scope }
+        | Call { func: Expr; args: list[Expr] }
+        | Fn { args: list[FnArg]; body: Expr; bodyScope: Scope }
+        | String { value: string }
+        | Id { name: string; typeHint: option[Hir.Type] }
+        
+        public mutable type: Type = Type.Var(None());
+        public mutable errors: List[Hir.Error] = List();
+    }
+    
+    [Record]
+    public class FnArg {
+        public name: string;
+        public mutable type: Type;
+    }
+    
+    [Record]
+    public class Import {
+        public name: string;
+    }
+    
+    public class Module {
+        public name: string;
+        public mutable imports: list[Import];
+        public mutable members: Hashtable[string, list[Expr]]; // overloads
+        
+        public scope: Scope;
+        
+        public this(name: string) {
+            this.name = name;
+            imports = [];
+            members = Hashtable();
+            
+            scope = Scope(None());
+        }
+    }
+}

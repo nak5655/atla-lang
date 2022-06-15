@@ -1,0 +1,110 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang.Hir
+{
+    public variant Type {
+        | Unit
+        | Int
+        | String
+        | Native { type: System.Type }
+        | Fn { args: list[Type]; ret: Type }
+        | Var { mutable instance: option[Type] }
+        | Err { value: Error }
+
+        public pruned(): Type {
+            match (this) {
+                | Var(Some(t)) => {
+                    def p = t.pruned();
+                    (this :> Var).instance = Some(p); // 経路圧縮
+                    p
+                }
+                | Fn(args, ret) => Fn(args.Map(arg => arg.pruned()), ret.pruned())
+                | _ => this
+            }
+        }
+        
+        occursIn(other: Type): bool {
+            match (this) {
+                | Var(Some(t)) => t.Equals(other) || t.occursIn(other)
+                | Fn(xs, a) => xs.Any(x => x.occursIn(other)) || a.occursIn(other) 
+                | _ => false
+            }
+        }
+        
+        public canUnify(expected: Type): bool {
+            def pThis = this.pruned();
+            def pExpected = expected.pruned();
+            
+            match (pThis, pExpected) {
+                | (Unit, Unit) => true
+                | (Int, Int) => true
+                | (String, String) => true
+                | (Native(a), Native(b)) => a.Equals(b) // TODO: 参照比較になってる?
+                | (Err, Err) => pThis.Equals(pExpected) // 参照比較でいい
+                | (Fn(xs, a), Fn(ys, b)) => {
+                    if (xs.Length != ys.Length)
+                        false
+                    else {
+                        xs.Zip(ys).All((x,y) => x.canUnify(y)) && a.canUnify(b)
+                    }
+                }
+                | (Var, _) => {
+                    // pThisはpruneを通してるのでinstanceはnullで確定
+                    // pThisのinstanceにpExpectedを入れればいい
+                            
+                    if (pThis.occursIn(pExpected)) {
+                        false
+                    } else {
+                        true
+                    }
+                }
+                | (_, Var) => pExpected.canUnify(pThis) // pExpectedはpruneを通してるのでinstanceはnullで確定
+                | _ => {
+                    Console.WriteLine($"LOG: Hir.Type.canUnify: unmatched to ($pThis, $pExpected)");
+                    false
+                }
+            }
+        }
+        
+        public unify(expected: Type): Type {
+            def pThis = this.pruned();
+            def pExpected = expected.pruned();
+            
+            match (pThis, pExpected) {
+                | (Fn(xs, a), Fn(ys, b)) => {
+                    if (xs.Length == ys.Length)
+                        Hir.Type.Err(Error.TypeUnificationFailure(this, expected))
+                    else {
+                        _ = xs.Zip(ys).Map((x,y) => x.unify(y));
+                        _ = a.unify(b);
+                        this // success
+                    }
+                }
+                | (thisVar is Var, _) => {
+                    // pThisはpruneを通してるのでinstanceはnullで確定
+                    // pThisのinstanceにpExpectedを入れればいい
+                            
+                    if (pThis.occursIn(pExpected)) {
+                        thisVar.instance = Some(Type.Err(Error.TypeRecursiveReference(pThis, pExpected)));
+                    } else {
+                        thisVar.instance = Some(pExpected);
+                    }
+                    this // success
+                }
+                | (_, Var) => pExpected.unify(pThis) // pExpectedはpruneを通してるのでinstanceはnullで確定
+                | _ when(this is Var) => {
+                    // thisがVar(None)のとき
+                    pThis.unify(pExpected)
+                }
+                | _ => if (pThis.Equals(pExpected)) this else Type.Err(Error.TypeUnificationFailure(this, expected))
+            }
+        }
+    }
+}

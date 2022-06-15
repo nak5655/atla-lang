@@ -1,0 +1,47 @@
+using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Atla.Lang.Parse;
+
+namespace Atla.Lang.Parse
+{
+    [Record]
+    public class Position: System.IEquatable[Position], System.IComparable[Position] {
+        public lines: list[string];
+        public line: int;
+        public col: int;
+        
+        public override GetHashCode() : int {
+            col + (line * 80) + lines.GetHashCode()
+        }
+        
+        public override Equals(other: object): bool implements System.IEquatable[Position].Equals {
+            match (other) {
+                | Position as p => {
+                    if (line == p.line && col == p.col) {
+                        lines.Equals(p.lines)
+                    } else {
+                        false
+                    }
+                }
+                | _ => false
+            }
+        }
+        
+        public CompareTo(other: Position): int {
+            match (other) {
+                | Position(_, line, col) => if (this.line != line) this.line.CompareTo(line) else this.col.CompareTo(col)
+                | _ => 1
+            }
+        }
+        
+        public override ToString(): string {
+            $"$(line):$(col)"
+        }
+    }
+}

@@ -1,0 +1,82 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+
+namespace Atla.Lang.Cir
+{
+    public variant Symbol: System.IEquatable[Symbol] {
+        | Method { name: string; argTypes: list[System.Type]; retType: System.Type }
+        | Class { name: string }
+        
+        public override GetHashCode() : int {
+            match (this) {
+                | Method(name, _, _) => name.GetHashCode()
+                | Class(name) => name.GetHashCode()
+            }
+        }
+        
+        public override Equals(other: object): bool implements System.IEquatable[Symbol].Equals {
+            match (this) {
+                | Method(name, argTypes, retType) => match (other) {
+                    | it is Method => it.name == name && it.argTypes.Zip(argTypes).All((a,b) => a == b) && it.retType == retType
+                    | _ => false
+                }
+                | Class(name) => match (other) {
+                    | it is Class => it.name == name
+                    | _ => false
+                }
+            }
+        }
+        
+        public override ToString(): string {
+            match (this) {
+                | Method(name, argTypes, retType) => {
+                    def args = if (argTypes.Length > 0) {
+                        argTypes.Tail.Fold(argTypes.First().ToString(), (v, acc) => acc + ", " + v.ToString())
+                    } else {
+                        ""
+                    };
+                    $"$name($args): $retType"
+                }
+                | Class(name) => name
+            }
+        }
+    }
+    
+    public variant Ins {
+        | LdLoc { index: int }
+        | LdArg { index: int }
+        | LdStr { str: string }
+        | Call { method: Method }
+        | CallNative { method: MethodInfo }
+        | Ret
+        | Nop
+    }
+    
+    [Record]
+    public class Method {
+        public sym: Symbol.Method;
+        public body: list[Ins];
+    }
+    
+    [Record]
+    public class Class {
+        public sym: Symbol.Class;
+        public baseClass: option[Class];
+        public methods: list[Method];
+    }
+    
+    [Record]
+    public class Module
+    {
+        public name: string;
+        public mutable classes: list[Class];
+        public mutable methods: list[Method];
+    }
+}

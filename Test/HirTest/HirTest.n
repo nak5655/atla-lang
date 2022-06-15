@@ -1,0 +1,44 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using NUnit.Framework;
+
+using Atla.Lang.Hir;
+
+namespace Test.HirTest
+{
+    [TestFixture]
+    class HirTest
+    {
+        [Test]
+        public TypeUnificationTest(): void {
+            def funcScope = Scope(None());
+            def func = Expr.Fn(
+                [FnArg("a", Type.Int()), FnArg("b", Type.Int())],
+                Expr.Block([
+                    Stmt.Return(Expr.String("c"))
+                ], Scope(Some(funcScope))),
+                funcScope
+            );
+            Typing.typing(Scope(None()), func, Type.Var(None()));
+            Typing.prune(func);
+            
+            Assert.IsInstanceOf(typeof(Type.Fn), func.type);
+            
+            match (func.type) {
+                | Type.Fn(args, ret) => {
+                    foreach (arg in args) {
+                        Assert.IsInstanceOf(typeof(Type.Int), arg);
+                    }
+                    Assert.IsInstanceOf(typeof(Type.String), ret);
+                }
+            }
+        }
+    }
+}

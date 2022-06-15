@@ -1,0 +1,68 @@
+﻿using Nemerle;
+using Nemerle.Assertions;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Atla;
+
+namespace Atla.Lang.Ast
+{
+    // 意味解析と脱糖
+    class Trans
+    {
+        //public resolve(type: Ast.Type): System.Type {
+        //    match (type) {
+        //        | Ast.Type.String => typeof(System.String)
+        //    }
+        //}
+        
+        //public trans(ast: Ast.Stmt): list[Cir.Ins] {
+        //    match (ast) {
+        //        | Ast.Stmt.Expr(expr) => trans(expr)
+        //        | Ast.Stmt.Let => [] # TODO
+        //        | Ast.Stmt.Ret => [Cir.Ins.Ret()]
+        //    }
+        //}
+        
+        //public load(ast: Ast.Expr): list[Cir.Ins] {
+        //    match (ast) {
+        //        | Ast.Expr.String(value) => [Cir.Ins.LdStr(value)]
+        //        | _ => throw System.Exception($"cannot load $ast directly. it should be a immediate value.")
+        //    }
+        //}
+        
+        //public trans(ast: Ast.Expr): list[Cir.Ins] {
+        //    match (ast) {
+        //        | Ast.Expr.Block(stmts) => stmts.Map(trans).Flatten()
+        //        | Ast.Expr.CallMethod(method, args) => {
+        //           args.Map(load).Flatten() + [Cir.Ins.Call(method)]
+        //        }
+        //    }
+        //}
+        
+        //public declare(Cir: Cir.Module, ast: Ast.Decl): void {
+        //    match (ast) {
+        //        | Ast.Decl.Expr where (name, rhs) => match (rhs) {
+        //            | fn is Ast.Expr.Fn => {
+        //                def argTypes = fn.args.Map((arg) => resolve(arg.type));
+        //                def retType = typeof(void); // TODO
+        //                def code = trans(fn.body);
+        //                Cir.methods = Cir.Method(name, argTypes, retType, code) :: Cir.methods
+        //            }
+        //        }
+        //    }
+        //}
+        
+        //public trans(ast: Ast.Module): Cir.Module {
+        //    def mod = Cir.Module(ast.name, [], []);
+        //    foreach (decl in ast.decls) {
+        //        declare(mod, decl);
+        //    }
+        //    mod
+        //}
+    }
+}

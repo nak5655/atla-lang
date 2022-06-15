@@ -1,0 +1,126 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+// Hindley/Milner 型推論
+namespace Atla.Lang.Hir
+{
+    public class Typing
+    {
+        public static typing(hir: Hir.Module): void {
+            foreach (import in hir.imports) {
+                // TODO: import atla module (non Native)
+                hir.scope.declareType(import.name, Hir.Type.Native(System.Type.GetType(import.name)))
+                // TODO: short name (e.g. System.Type as Type)
+            }
+            
+            // first, declare members
+            foreach ((id, member) in hir.members.KeyValuePairs) {
+                foreach (overload in member) {
+                    match (hir.scope.declareVar(id, overload.type)) {
+                        | Some(e) => overload.errors.Add(e)
+                        | _ => ()
+                    }
+                }
+            }
+            // next, infer the types.
+            foreach ((id, member) in hir.members.KeyValuePairs) {
+                foreach (overload in member) {
+                    def typ = hir.scope.resolveVar(id, overload.type);
+                    typing(hir.scope, overload, typ);
+                }
+            }
+        }
+        
+        public static typing(scope: Scope, hir: Hir.Expr, expect: Hir.Type): void {
+            def inferedType = match (hir) {
+                | Hir.Expr.String => Hir.Type.String().unify(expect)
+                | Hir.Expr.Id(name, Some(t)) => scope.resolveVar(name, t).unify(expect)
+                | Hir.Expr.Id(name, _) => scope.resolveVar(name, expect)
+                | Hir.Expr.Block(stmts, blockScope) => {
+                    foreach (stmt in stmts) {
+                        typing(blockScope, stmt, Some(hir.type));
+                    }
+                    hir.type
+                }
+                | Hir.Expr.Fn(args, body, bodyScope) => {
+                    foreach (arg in args) {
+                        _ = bodyScope.declareVar(arg.name, arg.type);
+                    }
+                    def retType = body.type;
+                    typing(bodyScope, body, retType);
+                    
+                    Hir.Type.Fn(args.Map(arg => arg.type), retType)
+                }
+                | Hir.Expr.Call(func, args) => {
+                    foreach (arg in args) {
+                        typing(scope, arg, arg.type);
+                    }
+                    def argTypes = args.Map(arg => arg.type);
+                    def retType = hir.type.unify(expect);
+                    def fnType = Hir.Type.Fn(argTypes, retType);
+                    typing(scope, func, fnType);
+                    match (func.type.unify(fnType)) {
+                        | Hir.Type.Fn(_, ret) => ret
+                        | err => err
+                    }
+                }
+            }
+            _ = hir.type.unify(inferedType);
+        }
+        
+        public static typing(scope: Hir.Scope, hir: Hir.Stmt, retType: option[Type]): void {
+            match (hir) {
+                | Hir.Stmt.Expr(expr) => typing(scope, expr, Hir.Type.Var(None()));
+                | Hir.Stmt.Return(value) => typing(scope, value, retType.WithDefault(Hir.Type.Var(None())))
+            }
+        }
+        
+        public static prune(hir: Hir.Module): void {
+            foreach (member in hir.members.Values) {
+                foreach (overload in member) {
+                    prune(overload);
+                }
+            }
+        }
+        
+        public static prune(hir: Hir.Stmt): void {
+            match (hir) {
+                | Hir.Stmt.Expr(expr) => prune(expr)
+                | Hir.Stmt.Return(value) => prune(value)
+            }
+        }
+        
+        public static prune(hir: Hir.Expr): void {
+            match (hir) {
+                | Block(stmts, _) => {
+                    foreach (stmt in stmts) {
+                        prune(stmt);
+                    }
+                    ()
+                }
+                | Call(func, args) => {
+                    foreach (arg in args) {
+                        prune(arg);
+                    }
+                    prune(func);
+                }
+                | Fn(args, body, _) => {
+                    foreach (arg in args) {
+                        arg.type = arg.type.pruned();
+                    }
+                    prune(body);
+                }
+                | String => ()
+                | Id => ()
+            }
+                    
+            hir.type = hir.type.pruned();
+        }
+    }
+}

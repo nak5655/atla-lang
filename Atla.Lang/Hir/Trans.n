@@ -1,0 +1,93 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Atla.Lang.Mir;
+
+namespace Atla.Lang.Hir
+{
+    //public class Trans
+    //{
+    //    parent: option[Trans];
+    //    mutable varTable: Hashtable[string, Hir.Type]; // TODO: 名前と型ヒントをキーにする
+    //    mutable typeTable: Hashtable[string, Hir.Type];
+        
+    //    public this(parent: option[Trans]) {
+    //        this.parent = parent;
+    //        varTable = Hashtable();
+    //        typeTable = Hashtable();
+    //    }
+        
+    //    public resolveVar(name: string): option[Hir.Type] {
+    //        if (varTable.ContainsKey(name)) {
+    //            varTable.Get(name)
+    //        } else {
+    //            parent.Value.resolveVar(name)
+    //        }
+    //    }
+        
+    //    public trans(hir: Hir.Type): Mir.Type {
+    //        match (hir) {
+    //            | Hir.Type.Unit => Mir.Type.Void()
+    //            | Hir.Type.String => Mir.Type.String()
+    //            | Hir.Type.Fn(args, ret) => Mir.Type.Fn(args.Map(trans), trans(ret))
+    //            | Hir.Type.Var(x) => throw System.Exception($"Type Inference Failure: $x")
+    //        }
+    //    }
+        
+    //    public trans(hir: Hir.Expr): list[Mir.Ins] {
+    //        match (hir) {
+    //            | Hir.Expr.Call(fn, args) => {
+    //                // TODO: K正規化
+    //                mutable mirArgs: list[Mir.Arg] = [];
+    //                foreach (arg in args) {
+    //                    match (arg) {
+    //                        | Hir.Expr.String(s) => mirArgs += [Mir.Arg.Imm(Mir.Imm.String(s))]
+    //                        | Hir.Expr.Id(name) => mirArgs += [Mir.Arg.Id(Mir.Id(name, trans(resolveVar(name).Value)))]
+    //                    }
+    //                }
+    //                match (fn) {
+    //                    | Hir.Expr.Id(name) => [Mir.Ins.Call(Mir.Id(name, trans(resolveVar(name).Value)), mirArgs)]
+    //                    // TODO 関数式
+    //                }
+    //            }
+    //            | Hir.Expr.Fn => {}
+    //        }
+    //    }
+        
+    //    public trans(hir: Hir.Decl): list[Mir.Decl] {
+    //        match (hir) {
+    //            | Hir.Decl.Import(name) => {
+    //                def type = System.Type.GetType(name);
+    //                typeTable.Add(name, Hir.Type.Native(type));
+    //                // TODO: ドット区切り対応 System.Console を Console として追加登録する
+    //                []
+    //            }
+    //            | Hir.Decl.Expr(name, expr) => {
+    //                mutable rhs = trans(expr);
+                    
+    //                varTable.Add(name, Hir.Type.Var(None()));
+    //                // TODO: Type Inference
+    //                def typ = Hir.Type.Fn([], Hir.Type.Unit());
+                    
+    //                match (typ) {
+    //                    | Hir.Type.Fn => [Mir.Decl.Fn(Mir.Id(name, trans(typ)), rhs)]
+    //                }
+    //            }
+    //        }
+    //    }
+        
+    //    public trans(hir: Hir.Module): Mir.Module {
+    //        mutable decls: list[Mir.Decl] = [];
+    //        foreach (decl in hir.decls) {
+    //            decls += trans(decl)
+    //        }
+            
+    //        Mir.Module(hir.name, decls)
+    //    }
+    //}
+}

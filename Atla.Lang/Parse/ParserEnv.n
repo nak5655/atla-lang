@@ -1,0 +1,88 @@
+using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using Nemerle.Imperative;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Atla.Lang.Parse;
+
+namespace Atla.Lang.Parse
+{
+    public class ParserEnv[I] {
+        public satisfy(name: string, pred: I -> bool): Parser[I, I] {
+            AnnoParser(input => {
+                match (input.get()) {
+                    | Some(got) => {
+                        if (pred(got)) {
+                            Result.Success(got, input.next())
+                        } else {
+                            Result.Failure.expectedButGot(name, got, input)
+                        }
+                    }
+                    | _ => Result.Failure.eof(name, input)
+                }
+            })
+        }
+        
+        public phrase[A](name: string, seq: list[A], eq: I * A -> bool): Parser[I, list[I]] {
+            AnnoParser(input => {
+                mutable current = input;
+                def ret: List[I] = List();
+                mutable i = 0;
+                while (i < seq.Count()) {
+                    match (current.get()) {
+                        | Some(got) => {
+                            when (!eq(got, seq.Nth(i))) {
+                                return Result.Failure.expectedButGot(name, got, current)
+                            }
+                            ret.Add(got);
+                            current = current.next();
+                            i += 1;
+                        }
+                        | _ => return Result.Failure.eof(name, input)
+                    }
+                }
+                
+                Result.Success(ret.AsList(), current)
+            })
+        }
+        
+        public pure[A](value: A): Parser[I, A] {
+            AnnoParser(input => {
+                Result.Success(value, input)
+            })
+        }
+        
+        public fail[A](reason: string): Parser[I, A] {
+            AnnoParser(input => {
+                Result.Failure(reason, input)
+            })
+        }
+        
+        // use object instead of unit (or void)
+        public eoi(): Parser[I, object] {
+            def t = ();
+            AnnoParser(input => {
+                match (input.get()) {
+                    | Some(c) => Result.Failure.expectedButGot("EOI", c, input)
+                    | _ => Result.Success(null, input)
+                }
+            }): Parser[I, object]
+        }
+        
+        public _ref[A](): ParserRef[I, A] {
+            ParserRef()
+        }
+    }
+    
+    public class ParserRef[I, A]: Parser[I, A] {
+        public mutable impl: Parser[I, A];
+        
+        public override apply(input: Input[I]): Result[I, A] {
+            impl.apply(input)
+        }
+    }
+}

@@ -1,0 +1,303 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+
+using Atla.Lang.Parse;
+
+
+namespace Atla.Lang.Parser
+{
+    [Record]
+    public class SourceChar {
+        public char: char;
+        public pos: option[Position];
+        
+        override public ToString(): string {
+            $"\'$(this.char)\'"
+        }
+    }
+    
+    [Record]
+    public class SourceString {
+        public string: string;
+        public span: option[Span];
+        
+        public this(chars: list[SourceChar]) {
+            this.string = string(chars.Map(c => c.char).ToArray());
+            if (chars.Length > 0) {
+                match ((chars.First().pos, chars.Last().pos)) {
+                    | (Some(a), Some(b)) => this.span = Some(Span(a, Position(b.lines, b.line, b.col + 1))); // add 1 to span.hi.col to include the last charactor.
+                    | _ => this.span = None();
+                }
+            } else {
+                this.span = None();
+            }
+        }
+        
+    }
+    
+    [Record]
+    public class SourceInput: Input[SourceChar] {
+        lines: list[string];
+        line: int;
+        col: int;
+        
+        public this(text: string) {
+            lines = text.Split(['\n'].ToArray()).ToNList();
+            line = 0;
+            col = 0;
+        }
+        
+        public get(): option[SourceChar] {
+            def ret: option[SourceChar] = if ((line < 0 || lines.Length - 1 < line) || lines.Nth(line).Length < col) {
+                None()
+            } else {
+                if (col == lines.Nth(line).Length) {
+                    Some(SourceChar('\n', Some(Position(lines, line, col))))
+                } else {
+                    Some(SourceChar(lines.Nth(line).ElementAt(col), Some(Position(lines, line, col))))
+                }
+            }
+            ret // occur an compiler error when without this temporal variable.
+        }
+        
+        public position(): Position {
+            Position(lines, line, col)
+        }
+        
+        public next(): Input[SourceChar] {
+            if (col <= lines.Nth(line).Length - 1) {
+                SourceInput(lines, line, col + 1)
+            } else {
+                SourceInput(lines, line + 1, 0)
+            }
+        }
+        
+        public override ToString(): string {
+            $"SourceInput{$(position())}, data=\"$(get())\""
+        }
+    }
+    
+    public variant Token {
+        | Id {
+            public value: string;
+    
+            public this(s: SourceString) {
+                value = s.string;
+                span = s.span;
+            }
+            
+            public override ToString(): string {
+                $"Id($(value))"
+            }
+        }
+        | InfixOp {
+            public value: string;
+            public precedence: int;
+            
+            public this(s: SourceString, precedence: int) {
+                value = s.string;
+                this.precedence = precedence;
+                span = s.span;
+            }
+            
+            public override ToString(): string {
+                $"InfixOp($(value))"
+            }
+        }
+        | Delim {
+            public value: string;
+            
+            public this(s: SourceString) {
+                value = s.string;
+                span = s.span;
+            }
+            
+            public override ToString(): string {
+                $"Delim($(value))"
+            }
+        }
+        | Int {
+            public value: int;
+            
+            public this(s: SourceString) {
+                value = int.Parse(s.string);
+                span = s.span;
+            }
+            
+            public override ToString(): string {
+                $"Int($(value))"
+            }
+        }
+        | String {
+            public value: string;
+            
+            public this(value: string, span: option[Span]) {
+                this.value = value;
+                this.span = span;
+            }
+            
+            public override ToString(): string {
+                $"String($(value))"
+            }
+        }
+        
+        public mutable span: option[Span];
+    }
+    
+    public class Lexer: ParserEnv[SourceChar]
+    {
+        public char(char: char): Parser[SourceChar, SourceChar] {
+            satisfy("char", c => c.char == char)
+        }
+        
+        alpha: Parser[SourceChar, SourceChar];
+        alpha_: Parser[SourceChar, SourceChar];
+        digit: Parser[SourceChar, SourceChar];
+        alphaNum: Parser[SourceChar, SourceChar];
+        alphaNum_: Parser[SourceChar, SourceChar];
+        sign: Parser[SourceChar, SourceChar];
+        nonZeroDigit: Parser[SourceChar, SourceChar];
+        uintZeroRaw: Parser[SourceChar, SourceChar];
+        uintNotZeroRaw: Parser[SourceChar, SourceString];
+        uintRaw: Parser[SourceChar, SourceString];
+        intRaw: Parser[SourceChar, SourceString];
+        
+        delimiters: list[string];
+        signDelims: HashSet[string];
+        
+        opSigns: HashSet[char];
+        infixOp3: HashSet[string];
+        infixOp4: HashSet[string];
+        infixOp5: HashSet[string];
+        infixOp6: HashSet[string];
+        
+        ws: Parser[SourceChar, SourceChar];
+        delim: Parser[SourceChar, Token];
+        
+        op: Parser[SourceChar, Token];
+        id: Parser[SourceChar, Token];
+        int: Parser[SourceChar, Token];
+        str: Parser[SourceChar, Token];
+        
+        tokens: Parser[SourceChar, list[Token]];
+        
+        public this() {
+            alpha = satisfy("letter", c => ('a' <= c.char && c.char <= 'z') || ('A' <= c.char && c.char <= 'Z'));
+            alpha_ = alpha._or(char('_'));
+            digit = satisfy("digit", c => '0' <= c.char && c.char <= '9');
+            alphaNum = alpha._or(digit);
+            alphaNum_ = alphaNum._or(char('_'));
+            sign = char('+')._or(char('-'));
+            nonZeroDigit = satisfy("non zero digit", c => '1' <= c.char && c.char <= '9');
+            uintZeroRaw = char('0');
+            uintNotZeroRaw = nonZeroDigit._and(digit.many()).map((a: SourceChar, b) => {
+                def s = string((a.char :: b.Map(c => c.char)).ToArray(): array[char]);
+                def span = match (a.pos) {
+                    | Some(apos) when (b.Length > 0) => match (b.Last().pos) {
+                        | Some(bpos) => Some(Span(apos, bpos))
+                        | _ => None()
+                    }
+                    | _ => None()
+                };
+                SourceString(s, span)
+            });
+            uintRaw = uintZeroRaw.map(c => SourceString(c.char.ToString(), c.pos.Map(p => Span(p, p))))._or(uintNotZeroRaw);
+            intRaw = sign.optional()._and(uintRaw).map((a, b) => {
+                def s = match (a) {
+                    | Some(c) => c.char.ToString() + b.string
+                    | _ => b.string
+                };
+                def span = match (a, b.span) {
+                    | (Some(c), Some(bs)) => Some(Span(c.pos.WithDefault(bs.lo), bs.hi))
+                    | _ => b.span
+                }
+                SourceString(s, span)
+            });
+        
+            delimiters = [
+                "let", "val", "var", "fn", "mod", "def", "use", "import", "class", "trait", "impl", // declarations
+                "for", "in", "if", "else", "match", "do", "while", // control flows
+                "return", "continue", "break", // block
+                "true", "false", // boolean
+            ];
+            def delimSigns = [
+                "->", "~>", "=>",
+                "=", "(", ")", "<", ">", "[", "]", "{", "}", ":", ".", "-" "+", "*", "/", "~", // signs
+            ];
+            
+            opSigns = HashSet("+-*/%|&><!=.");
+            
+            infixOp3 = HashSet(["==", "!="]);
+            infixOp4 = HashSet([".."]);
+            infixOp5 = HashSet(["+", "-"]);
+            infixOp6 = HashSet(["*", "/", "%"]);
+            def infixOps = HashSet(infixOp3.Concat(infixOp4).Concat(infixOp5).Concat(infixOp6));
+        
+            ws = satisfy("whitespace", c => " \n\r\t".Contains(c.char));
+            def delimS = delimSigns.Map(delimiter => {
+                // 記号のデリミタは演算子の記号が続いてはいけない(カッコなどは連続していい)
+                phrase(delimiter, delimiter.ToArray().ToNList(), (i, a) => i.char == a).notFollowedBy(satisfy("", c => opSigns.Contains(c.char))).map(s => {
+                    Token.Delim(SourceString(s))
+                })
+            }).FoldRight(fail("no matching delimiter"), (a, b) => a._or(b));
+            def delimA = delimiters.Map(delimiter => {
+                // アルファベットのデリミタはアルファベット数字アンダーバーが続いてはいけない
+                phrase(delimiter, delimiter.ToArray().ToNList(), (i, a) => i.char == a).notFollowedBy(alphaNum_).map(s => {
+                    Token.Delim(SourceString(s))
+                })
+            }).FoldRight(fail("no matching delimiter"), (a, b) => a._or(b));
+            delim = delimA._or(delimS);
+            
+            op = infixOps.Map(op => {
+                phrase(op, op.ToArray().ToNList(), (i, a) => i.char == a).map(cs => {
+                    def s = SourceString(cs);
+                    def precedence = if (infixOp3.Contains(s.string)) 3
+                    else if (infixOp4.Contains(s.string)) 4
+                    else if (infixOp5.Contains(s.string)) 5
+                    else if (infixOp6.Contains(s.string)) 6
+                    else 1;
+                    Token.InfixOp(s, precedence)
+                }).notFollowedBy(satisfy("sign", (c => opSigns.Contains(c.char)))) // 演算子の後に記号が続かない
+            }).FoldRight(fail("no matching operator"), (a, b) => a._or(b));;
+            id = alpha_._and(alphaNum_.many()).map((x, xs) => {
+                def s = SourceString(x :: xs);
+                if (delimiters.Contains(s.string)) {
+                    Token.Delim(s)
+                } else {
+                    Token.Id(s)
+                }
+            });
+            int = intRaw.map(x => {
+                Token.Int(x)
+            });
+            str = char('\"')._and(satisfy("str", c => c.char != '\"').many())._and(char('\"')).map((l_xs, r) => {
+                def s = SourceString(l_xs[1]);
+                def span = match (l_xs[0].pos, r.pos) {
+                    | (Some(lo), Some(hi)) => Some(Span(lo, hi))
+                    | _ => None()
+                };
+                Token.String(s.string, span)
+            });
+            
+            tokens = ws.many()._andR(str._or(int)._or(op)._or(delim)._or(id)).sepBy(ws.many())._andL(ws.many())._andL(eoi());
+        }
+        
+        public tokenize(text: string): Result[SourceChar, list[Token]] {
+            // remove comments
+            def lines = text.Replace("\r\n", "\n").Replace("\r", "\n").SplitToList('\n');
+            def sb = System.Text.StringBuilder();
+            foreach (line in lines) {
+                _ = sb.AppendLine(line.Split('#').First())
+            }
+            
+            tokens.parse(SourceInput(sb.ToString()))
+        }
+    }
+}

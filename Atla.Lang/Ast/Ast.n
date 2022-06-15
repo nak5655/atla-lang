@@ -1,0 +1,64 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using Atla;
+
+using Atla.Lang.Parse;
+
+namespace Atla.Lang.Ast
+{
+    public variant Type: HasSpan[Type] {
+        | Unit
+        | Int
+        | String
+        | Name { value: string }
+    }
+    
+    [Record]
+    public class FnArg: HasSpan[FnArg] {
+        public name: string;
+        public type: Type;
+    }
+    
+    public variant Expr: HasSpan[Expr] {
+        | Id { value: string }
+        | Block { stmts: list[Stmt] }
+        | Fn { args: list[FnArg]; body: Expr }
+        | CallMethod { method: MethodInfo; args: list[Ast.Expr] }
+        | Stack { exprs: list[Expr] }
+        | Member { obj: Expr; member: string }
+        | String { value: string }
+        | Int { value: int }
+        | Unit
+    }
+    
+    public variant Stmt: HasSpan[Stmt] {
+        | Let { name: string; rhs: Ast.Expr }
+        | Expr { expr: Ast.Expr }
+        | Ret { expr: Ast.Expr }
+    }
+    
+    public variant ClassItem: HasSpan[ClassItem] {
+        | Field { name: string; type: Type; mut: bool; init: option[Expr] }
+        | Method { name: string; args: list[FnArg]; body: Expr }
+        | Error { reason: string }
+    }
+    
+    public variant Decl: HasSpan[Decl] {
+        | Class { name: string; items: list[ClassItem] }
+        | Fn { name: string; args: list[FnArg]; ret: Type; body: Ast.Expr }
+        | Import { path: list[string] }
+        | Error { reason: string }
+    }
+    
+    [Record]
+    public class Module: HasSpan[Module] {
+        public decls: list[Decl];
+    }
+}

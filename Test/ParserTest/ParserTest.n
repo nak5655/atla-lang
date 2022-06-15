@@ -1,0 +1,58 @@
+using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.IO;
+
+using Atla.Lang.Parse;
+using Atla.Lang.Parser;
+using Atla.Lang.Ast;
+using NUnit.Framework;
+
+namespace Test.ParserTest
+{
+    [TestFixture]
+    class ParserTest
+    {
+        readCase(fileName: string): string {
+            File.ReadAllText(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"cases\\$(fileName)"))
+        }
+        
+        [Test]
+        public EasyTokenizeTest(): void {
+            def lexer = Lexer();
+            match (lexer.tokenize("let main = 2 + -5 == true")) {
+                | Result.Success(result, _) => {
+                    Assert.AreEqual(8, result.Length);
+                    Assert.IsInstanceOf(typeof(Token.Delim), result.ElementAt(2));
+                    Assert.IsInstanceOf(typeof(Token.InfixOp), result.ElementAt(4));
+                    Assert.IsInstanceOf(typeof(Token.InfixOp), result.ElementAt(6));
+                }
+                | _ => throw System.Exception("failed to tokenize.")
+            }
+        }
+        
+        [Test]
+        public EasyTest(): void {
+            def code = readCase("easy.atla");
+            
+            def lexer = Lexer();
+            match (lexer.tokenize(code)) {
+                | Result.Success(tokens, _) => {
+                    def parser = Parser();
+                    match (parser.mod.parse(TokenInput(tokens, 0))) {
+                        | Result.Success(result, _) => {
+                            Assert.IsInstanceOf(typeof(Expr.Int), result)
+                        }
+                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
+                    }
+                }
+                | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
+            }
+        }
+    }
+}

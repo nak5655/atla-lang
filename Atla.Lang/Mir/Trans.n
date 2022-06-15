@@ -1,0 +1,85 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+
+namespace Atla.Lang.Mir
+{
+    class Trans
+    {
+        parent: option[Trans];
+        mutable varTypeTable: Hashtable[Mir.Id, Mir.Type] = Hashtable();
+        mutable methodTable: Hashtable[Mir.Id, Cir.Method] = Hashtable();
+        
+        public this(parent: option[Trans]) {
+            this.parent = parent;
+        }
+        
+        public resolve(type: Mir.Type): System.Type {
+            match (type) {
+                | Mir.Type.String => typeof(System.String)
+                | Mir.Type.Void => typeof(void)
+            }
+        }
+        
+        public resolveAsMethod(mir: Mir.Id): Cir.Method {
+            if (methodTable.ContainsKey(mir)) {
+                methodTable.Get(mir).Value
+            } else {
+                parent.Value.resolveAsMethod(mir)
+            }
+        }
+        
+        public load(mir: Mir.Arg): list[Cir.Ins] {
+            match (mir) {
+                | Mir.Arg.Id => [] // TODO
+                | Mir.Arg.Imm(imm) => {
+                    match (imm) {
+                        | Mir.Imm.String(value) => [Cir.Ins.LdStr(value)]
+                    }
+                }
+            }
+        }
+        
+        
+        public trans(mir: Mir.Ins): list[Cir.Ins] {
+            match (mir) {
+                | Mir.Ins.Call(func, args) => args.Map(load).Flatten() + [
+                    Cir.Ins.Call(resolveAsMethod(func))
+                ]
+                | Mir.Ins.CallNative(method, args) => args.Map(load).Flatten() + [
+                    Cir.Ins.CallNative(method)
+                ]
+                | Mir.Ins.Ret => [Cir.Ins.Ret()]
+            }
+        }
+        
+        public declare(cir: Cir.Module, mir: Mir.Decl): void {
+            match (mir) {
+                | Mir.Decl.Fn(id, body) => {
+                    def type = id.type :> Mir.Type.Fn;
+                    def argTypes = type.args.Map(resolve);
+                    def retType = resolve(type.ret);
+                    def code = body.Map(trans).Flatten();
+                    def method = Cir.Method(Cir.Symbol.Method(id.name, argTypes, retType), code);
+                    cir.methods = cir.methods + [method];
+                    
+                    methodTable.Add(id, method);
+                }
+            }
+        }
+        
+        public trans(mir: Mir.Module): Cir.Module {
+            def mod = Cir.Module(mir.name, [], []);
+            foreach (decl in mir.decls) {
+                declare(mod, decl);
+            }
+            mod
+        }
+    }
+}
