@@ -217,7 +217,7 @@ namespace Atla.Lang.Parser
                 spanned(match ((a :> Expr.Id).value) {
                     | "Int" => Type.Int()
                     | "String" => Type.String()
-                    | name => Type.Name(name)
+                    | s => Type.Id(s)
                 }, [a])
             });
             def typeHintParen: Parser[Token, Ast.Type] = delim("(")._and(typeHintFactor.optional().map(mt => {
@@ -226,7 +226,13 @@ namespace Atla.Lang.Parser
                     | _ => Type.Unit()
                 }
             }))._and(delim(")")).map((ab, c) => spanned(ab[1], [ab[0], c]));
-            def typeHint = typeHintParen._or(typeHintFactor);
+            def typeHintTerm = typeHintParen._or(typeHintFactor);
+            def typeHint = typeHintTerm.many1().map(ts => {
+                if (ts.Length == 1)
+                    ts.First()
+                else
+                    Type.Generics(ts.Last(), ts.FirstN(ts.Length - 1))
+            });
             
             // Decls
             def fnArg: Parser[Token, FnArg] = delim("(")._andR(id)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {

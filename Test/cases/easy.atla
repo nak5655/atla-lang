@@ -1,4 +1,4 @@
 ﻿import System.Console
 
-fn (args: Array) main: () =
+fn (args: String Array) main: () =
 	"Hello" Console.WriteLine

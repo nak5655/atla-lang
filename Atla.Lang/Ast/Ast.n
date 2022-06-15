@@ -17,7 +17,8 @@ namespace Atla.Lang.Ast
         | Unit
         | Int
         | String
-        | Name { value: string }
+        | Id { value: string }
+        | Generics { type: Type; _params: list[Type] }
     }
     
     [Record]
