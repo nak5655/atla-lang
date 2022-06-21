@@ -203,7 +203,7 @@ namespace Atla.Lang.Parser
                 if (es.Length == 1)
                     es.First()
                 else
-                    spanned(Expr.Stack(es), es)
+                    spanned(Expr.Apply(es.First(), es.Tail), es)
             });
             
             exprStmt = expr.map(e => spanned(Stmt.Expr(e), [e]));
@@ -214,11 +214,7 @@ namespace Atla.Lang.Parser
             stmt.impl = retStmt._or(exprStmt);
             
             def typeHintFactor: Parser[Token, Ast.Type] = id.map(a => {
-                spanned(match ((a :> Expr.Id).value) {
-                    | "Int" => Type.Int()
-                    | "String" => Type.String()
-                    | s => Type.Id(s)
-                }, [a])
+                spanned(Type.Id((a :> Expr.Id).value), [a])
             });
             def typeHintParen: Parser[Token, Ast.Type] = delim("(")._and(typeHintFactor.optional().map(mt => {
                 match (mt) {
@@ -240,10 +236,10 @@ namespace Atla.Lang.Parser
             });
             def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
             def fnBody = stmt.many().map(stmts => spanned(Expr.Block(stmts), stmts));
-            fnDecl = block(delim("fn"), skipDeclError(fnArgs._and(id)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((rs_n_r, c) => {
-                def n = rs_n_r[0][1];
-                def rs = rs_n_r[0][0];
-                def r = rs_n_r[1];
+            fnDecl = block(delim("fn"), skipDeclError(id._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((n_rs_r, c) => {
+                def n = n_rs_r[0][0];
+                def rs = n_rs_r[0][1];
+                def r = n_rs_r[1];
                 spanned(Decl.Fn((n :> Expr.Id).value, rs, r, c), [n, c])
             }))).map((a, b) => spanned(b, [a]));
             

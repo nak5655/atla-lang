@@ -18,25 +18,32 @@ namespace Test.HirTest
     {
         [Test]
         public TypeUnificationTest(): void {
-            def funcScope = Scope(None());
+            def globalScope = Scope();
+            def funcScope = Scope(globalScope);
             def func = Expr.Fn(
-                [FnArg("a", Type.Int()), FnArg("b", Type.Int())],
-                Expr.Block([
-                    Stmt.Return(Expr.String("c"))
-                ], Scope(Some(funcScope))),
+                ["a", "b"],
+                {
+                    def b = Expr.Block(Scope(funcScope));
+                    b.stmts.Add(Stmt.Return(Expr.String("c")));
+                    b
+                },
                 funcScope
             );
-            Typing.typing(Scope(None()), func, Type.Var(None()));
-            Typing.prune(func);
+            func.typeVar.addHint(TypeHint.Fn([
+                TypeVar(TypeHint.Name(globalScope, Scope.intTypeName)),
+                TypeVar(TypeHint.Name(globalScope, Scope.intTypeName)),
+            ], TypeVar(TypeHint.Name(globalScope, Scope.stringTypeName))));
+            Typing().analyze(globalScope, func);
+            Typing().infer(globalScope, func);
             
-            Assert.IsInstanceOf(typeof(Type.Fn), func.type);
+            Assert.IsInstanceOf(typeof(Type.Fn), func.typeVar.type.Value);
             
-            match (func.type) {
-                | Type.Fn(args, ret) => {
+            match (func.typeVar.type) {
+                | Some(Type.Fn(args, ret)) => {
                     foreach (arg in args) {
-                        Assert.IsInstanceOf(typeof(Type.Int), arg);
+                        Assert.IsInstanceOf(typeof(Type.Native), arg);
                     }
-                    Assert.IsInstanceOf(typeof(Type.String), ret);
+                    Assert.IsInstanceOf(typeof(Type.Native), ret);
                 }
             }
         }

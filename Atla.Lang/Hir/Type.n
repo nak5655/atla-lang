@@ -2,108 +2,186 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+
+using Atla.Lang.Parse;
+using Atla.Lang;
 
 namespace Atla.Lang.Hir
 {
-    public variant Type {
-        | Unit
-        | Int
-        | String
-        | Native { type: System.Type }
-        | Fn { args: list[Type]; ret: Type }
-        | Var { mutable instance: option[Type] }
-        | Err { value: Error }
-
-        public pruned(): Type {
-            match (this) {
-                | Var(Some(t)) => {
-                    def p = t.pruned();
-                    (this :> Var).instance = Some(p); // 経路圧縮
-                    p
-                }
-                | Fn(args, ret) => Fn(args.Map(arg => arg.pruned()), ret.pruned())
-                | _ => this
-            }
+    public class TypeVar {
+        public hints: List[TypeHint] = List();
+        public mutable type: option[Type] = None();
+            
+        public this() { }
+            
+        public this(hint: TypeHint) {
+            hints.Add(hint);
+        }
+            
+        public addHint(hint: TypeHint): void {
+            hints.Add(hint);
         }
         
-        occursIn(other: Type): bool {
-            match (this) {
-                | Var(Some(t)) => t.Equals(other) || t.occursIn(other)
-                | Fn(xs, a) => xs.Any(x => x.occursIn(other)) || a.occursIn(other) 
+        // type型として解決する
+        public resolveAs(type: Type): void {
+            this.type = Some(type);
+        }
+        
+        // type型として解釈できるか
+        public judge(type: Type): bool {
+            hints.All(_.judge(type))
+        }
+        
+        // typeHintsからtypeを推論する
+        public infer(): Type {
+            when (type.IsSome) {
+                return type.Value
+            }
+            
+            foreach (hint in hints) {
+                // TODO
+                def hintType = match (hint) {
+                    | Name(scope, s) => {
+                        scope.resolveType(s).WithDefault(Type.Error(Hir.Error.UndefinedType(s)))
+                    }
+                    | Fn(args, ret) => {
+                        Type.Fn(args.Map(_.infer()), ret.infer());
+                    }
+                    | BehaveAs(v) => {
+                        // TODO 循環参照危ないかも
+                        v.infer()
+                    }
+                }
+                type = Some(type.Map(t => t.unified(hintType)).WithDefault(hintType))
+            }
+            
+            when (type.IsNone) {
+                type = Some(Type.Error(Hir.Error.TypeInferenceFailure()))
+            }
+            
+            type.Value
+        }
+        
+        public override ToString(): string {
+            match (type) {
+                | Some(t) => t.ToString()
+                | _ => Misc.joinToString(" + ", hints)
+            }
+        }
+    }
+    
+    public variant TypeHint: HasSpan[TypeHint] {
+        | Name {
+            scope: Scope;
+            name: string;
+            
+            public override ToString(): string {
+                name
+            }
+        }
+        | Fn {
+            args: list[TypeVar]; ret: TypeVar;
+            
+            public override ToString(): string {
+                def sb = StringBuilder();
+                if (args.Length > 0) {
+                    _ = sb.Append(args.Head.ToString());
+                    foreach (arg in (args.Tail + [ret])) {
+                        _ = sb.Append(" -> ").Append(arg.ToString());
+                    }
+                } else {
+                    _ = sb.Append(ret.ToString());
+                }
+                sb.ToString()
+            }
+        }
+        | Generics { _base: TypeVar; _params: list[TypeVar] }
+        | BehaveAs { var: TypeVar }
+        | OneOf { types: list[TypeVar] } // 順不同
+        | NoneOf { types: list[TypeVar] }
+        
+        // TODO recursive type reference
+        public judge(type: Type): bool { match (this) {
+            | Hir.TypeHint.Name(scope, s) => match (type) {
+                | Native(t) => match (scope.resolveType(s)) {
+                    | Some(s) => t.Equals(s) // Need Test
+                    | _ => false
+                }
+                | Class => match (scope.resolveType(s)) {
+                    | Some(s) => type.Equals(s) // Need Test
+                    | _ => false
+                }
                 | _ => false
             }
-        }
-        
-        public canUnify(expected: Type): bool {
-            def pThis = this.pruned();
-            def pExpected = expected.pruned();
+            | Hir.TypeHint.Fn(args, ret) => match (type) {
+                | f is Type.Fn when f.args.Length == args.Length => args.Zip(f.args).All((c, t) => c.judge(t)) && ret.judge(f)
+                | Native => false // TODO
+                | _ => false
+            }
+            | Hir.TypeHint.Generics(_base, _params) => match (type) {
+                | Type.Generics(b, ps) when _params.Length == ps.Length => _base.judge(b) && ps.Zip(_params).All((p, _p) => _p.judge(p))
+                | _ => false
+            }
+            | Hir.TypeHint.BehaveAs(var) => {
+                var.hints.All(_.judge(type))
+            }
+            | Hir.TypeHint.OneOf(vars) => {
+                vars.Any(v => {
+                    v.hints.All(_.judge(type))
+                })
+            }
+            | Hir.TypeHint.NoneOf(vars) => {
+                !vars.Any(v => {
+                    v.hints.All(_.judge(type))
+                })
+            }
+        }}
+    }
+    
+    public variant Type {
+        | Class {  }
+        | Native {
+            type: System.Type;
             
-            match (pThis, pExpected) {
-                | (Unit, Unit) => true
-                | (Int, Int) => true
-                | (String, String) => true
-                | (Native(a), Native(b)) => a.Equals(b) // TODO: 参照比較になってる?
-                | (Err, Err) => pThis.Equals(pExpected) // 参照比較でいい
-                | (Fn(xs, a), Fn(ys, b)) => {
-                    if (xs.Length != ys.Length)
-                        false
-                    else {
-                        xs.Zip(ys).All((x,y) => x.canUnify(y)) && a.canUnify(b)
-                    }
-                }
-                | (Var, _) => {
-                    // pThisはpruneを通してるのでinstanceはnullで確定
-                    // pThisのinstanceにpExpectedを入れればいい
-                            
-                    if (pThis.occursIn(pExpected)) {
-                        false
-                    } else {
-                        true
-                    }
-                }
-                | (_, Var) => pExpected.canUnify(pThis) // pExpectedはpruneを通してるのでinstanceはnullで確定
-                | _ => {
-                    Console.WriteLine($"LOG: Hir.Type.canUnify: unmatched to ($pThis, $pExpected)");
-                    false
-                }
+            public override ToString(): string {
+                type.Name
+            }
+        }
+        | Fn {
+            args: list[Type]; ret: Type;
+            
+            public override ToString(): string {
+                def a = Misc.joinToString(", ", args);
+                $"($a): $ret"
+            }
+        }
+        | Generics { _base: Type; _params: list[Type] }
+        | Error {
+            public this(error: Hir.Error) {
+                this.errors.Add(error);
+            }
+            
+            public this(errors: IEnumerable[Hir.Error]) {
+                this.errors.AddRange(errors);
             }
         }
         
-        public unify(expected: Type): Type {
-            def pThis = this.pruned();
-            def pExpected = expected.pruned();
-            
-            match (pThis, pExpected) {
-                | (Fn(xs, a), Fn(ys, b)) => {
-                    if (xs.Length == ys.Length)
-                        Hir.Type.Err(Error.TypeUnificationFailure(this, expected))
-                    else {
-                        _ = xs.Zip(ys).Map((x,y) => x.unify(y));
-                        _ = a.unify(b);
-                        this // success
-                    }
-                }
-                | (thisVar is Var, _) => {
-                    // pThisはpruneを通してるのでinstanceはnullで確定
-                    // pThisのinstanceにpExpectedを入れればいい
-                            
-                    if (pThis.occursIn(pExpected)) {
-                        thisVar.instance = Some(Type.Err(Error.TypeRecursiveReference(pThis, pExpected)));
-                    } else {
-                        thisVar.instance = Some(pExpected);
-                    }
-                    this // success
-                }
-                | (_, Var) => pExpected.unify(pThis) // pExpectedはpruneを通してるのでinstanceはnullで確定
-                | _ when(this is Var) => {
-                    // thisがVar(None)のとき
-                    pThis.unify(pExpected)
-                }
-                | _ => if (pThis.Equals(pExpected)) this else Type.Err(Error.TypeUnificationFailure(this, expected))
+        public members: Hashtable[string, List[Expr]] = Hashtable();
+        public errors: List[Hir.Error] = List();
+        
+        public unified(other: Type): Type {
+            match ((this, other)) {
+                | (e is Error, _) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(this, other)])
+                | (_, e is Error) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(other, this)])
+                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x,y) => x.unified(y)), b.unified(d))
+                // TODO
+                | _ => Type.Error(Hir.Error.TypeUnificationFailure(this, other))
             }
         }
     }

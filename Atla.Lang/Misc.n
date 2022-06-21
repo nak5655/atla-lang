@@ -1,0 +1,30 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+
+namespace Atla.Lang
+{
+    class Misc
+    {
+        public static joinToString[T](sep: string, values: list[T]): string {
+            def sb = StringBuilder();
+            when (values.Length > 0) {
+                _ = sb.Append(values.Head.ToString());
+                foreach (value in values.Tail) {
+                    _ = sb.Append(sep).Append(value.ToString());
+                }
+            }
+            sb.ToString()
+        }
+        
+        public static joinToString[T](sep: string, values: List[T]): string {
+            joinToString(sep, values.ToNList())
+        }
+    }
+}

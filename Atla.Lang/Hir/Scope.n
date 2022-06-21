@@ -1,0 +1,81 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using Nemerle.Imperative;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang.Hir
+{
+    // a.k.a SymbolTable or Environment
+    public class Scope {
+        parent: option[Scope] = None();
+        varTable: Hashtable[string, List[Hir.TypeVar]] = Hashtable();
+        typeTable: Hashtable[string, Type] = Hashtable();
+        implTable: Hashtable[string, Impl] = Hashtable();
+        
+        // Primery Types
+        public static unitTypeName: string = "Unit";
+        public static intTypeName: string = "Int";
+        public static stringTypeName: string = "String";
+        
+        public this(parent: Scope) {
+            this.parent = Some(parent);
+        }
+        
+        public this() {
+            // Global Scope
+            typeTable.Add(unitTypeName, Type.Native(typeof(void)));
+            typeTable.Add(intTypeName, Type.Native(typeof(int)));
+            typeTable.Add(stringTypeName, Type.Native(typeof(string)));
+        }
+        
+        // TODO 経路圧縮
+        public globalScope(): Scope {
+            match (parent) {
+                | Some(p) => p.globalScope()
+                | _ => this
+            }
+        }
+        
+        public declareType(id: string, type: Type): void {
+            typeTable.Add(id, type)
+        }
+        
+        public resolveType(id: string): option[Type] {
+            if (typeTable.ContainsKey(id)) {
+                typeTable.Get(id)
+            } else if (parent.IsSome) {
+                parent.Value.resolveType(id)
+            } else {
+                None()
+            }
+        }
+        
+        public declareVar(id: string, type: Hir.TypeVar): void {
+            if (varTable.ContainsKey(id)) {
+                def types = varTable.Get(id).Value;
+                type.addHint(TypeHint.NoneOf(types.ToNList())); // すでに宣言されている型と重複してはいけない
+                types.Add(type);
+            } else {
+                varTable.Set(id, [type].ToList());
+            }
+        }
+        
+        // 名前解決での優先順で返す（内側のスコープを優先）
+        public resolveVar(id: string, type: Hir.TypeVar): List[Hir.TypeVar] {
+            def vars = if (varTable.ContainsKey(id)) {
+                varTable.Get(id).Value
+            } else {
+                List()
+            }
+            when (parent.IsSome) {
+                vars.AddRange(parent.Value.resolveVar(id, type));
+            }
+            vars
+        }
+    }
+}

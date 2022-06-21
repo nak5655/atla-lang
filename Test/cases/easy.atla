@@ -1,4 +1,9 @@
 ﻿import System.Console
 
-fn (args: String Array) main: () =
-	"Hello" Console.WriteLine
+fn main (args: String Array): () =
+	Console.WriteLine "Hello"
+
+
+(_base trans) (_params (trans map)) Hir.Type.Generics
+
+Hir.Type.Generics _base.trans _params.(map trans)

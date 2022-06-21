@@ -37,5 +37,17 @@ namespace Atla.Lang.Parse
             
             this :> T
         }
+        public addSpan(other: option[Span]): T {
+            match (other) {
+                | Some(s) => addSpan(s)
+                | _ => this :> T
+            }
+        }
+        public addSpan(others: list[option[Span]]): T {
+            foreach (other in others) {
+                _ = addSpan(other)
+            }
+            this :> T
+        }
     }
 }

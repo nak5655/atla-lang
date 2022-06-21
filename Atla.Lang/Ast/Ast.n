@@ -15,8 +15,7 @@ namespace Atla.Lang.Ast
 {
     public variant Type: HasSpan[Type] {
         | Unit
-        | Int
-        | String
+        | Fn { args: list[Type]; ret: Type }
         | Id { value: string }
         | Generics { type: Type; _params: list[Type] }
     }
@@ -28,15 +27,14 @@ namespace Atla.Lang.Ast
     }
     
     public variant Expr: HasSpan[Expr] {
+        | Unit
+        | Int { value: int }
+        | String { value: string }
         | Id { value: string }
         | Block { stmts: list[Stmt] }
         | Fn { args: list[FnArg]; body: Expr }
-        | CallMethod { method: MethodInfo; args: list[Ast.Expr] }
-        | Stack { exprs: list[Expr] }
         | Member { obj: Expr; member: string }
-        | String { value: string }
-        | Int { value: int }
-        | Unit
+        | Apply { fn: Expr; args: list[Expr] }
     }
     
     public variant Stmt: HasSpan[Stmt] {

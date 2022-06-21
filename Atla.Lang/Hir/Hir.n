@@ -7,6 +7,8 @@ using Nemerle.Imperative;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Atla.Lang.Parse;
+
 
 /**
 脱糖済み
@@ -20,106 +22,107 @@ namespace Atla.Lang.Hir
         | TypeUnificationFailure { refered: Type; referer: Type }
         | TypeRecursiveReference { a: Type; b: Type }
         | UndefinedReference { name: string; type: Type }
+        | UndefinedType { name: string }
+        | TypeInferenceFailure
+        | AmbiguousTypeMember
     }
     
-    // a.k.a SymbolTable or Environment
-    public class Scope {
-        parent: option[Scope];
-        varTable: Hashtable[string, list[Hir.Type]];
-        typeTable: Hashtable[string, Type];
-        
-        public this(parent: option[Scope]) {
-            this.parent = parent;
-            varTable = Hashtable();
-            typeTable = Hashtable();
-        }
-        
-        public declareType(name: string, type: Type): void {
-            typeTable.Add(name, type)
-        }
-        
-        public resolveType(name: string): option[Type] {
-            typeTable.Get(name)
-        }
-        
-        public declareVar(id: string, type: Type): option[Error] {
-            match (resolveVar(id, type)) {
-                | Hir.Type.Err => ()
-                | t => return Some(Error.DuplicatedDeclaration(id, type, t));
-            }
-            
-            if (varTable.ContainsKey(id)) {
-                def types = varTable.Get(id).Value;
-
-                varTable.Set(id, types + [type]);
-                None()
-            } else {
-                varTable.Set(id, [type]);
-                None()
-            }
-        }
-        
-        public declareVar(id: string): option[Error] {
-            declareVar(id, Type.Var(None()))
-        }
-        
-        public resolveVar(id: string, type: Type): Type {
-            if (varTable.ContainsKey(id)) {
-                def types = varTable.Get(id).Value;
-                match (types.Find(t => t.canUnify(type))) {
-                    | Some(t) => t
-                    | _ => Hir.Type.Err(Hir.Error.UndefinedReference(id, type))
-                }
-                
-            } else {
-                match (parent) {
-                    | Some(p) => p.resolveVar(id, type)
-                    | _ => Hir.Type.Err(Hir.Error.UndefinedReference(id, type))
-                }
-            }
-        }
-    }
-    
-    public variant Stmt {
+    public variant Stmt: HasSpan[Expr] {
         | Expr { expr: Hir.Expr }
+        | Let { name: string; expr: Hir.Expr }
         | Return { value: Hir.Expr }
-    }
-    
-    public variant Expr {
-        | Block { stmts: list[Stmt]; scope: Scope }
-        | Call { func: Expr; args: list[Expr] }
-        | Fn { args: list[FnArg]; body: Expr; bodyScope: Scope }
-        | String { value: string }
-        | Id { name: string; typeHint: option[Hir.Type] }
         
-        public mutable type: Type = Type.Var(None());
-        public mutable errors: List[Hir.Error] = List();
+        public mutable errors: List[Error];
+        
+        public addError(err: option[Error]): void {
+            match (err) {
+                | Some(e) => errors.Add(e)
+                | _ => {}
+            }
+        }
     }
     
-    [Record]
-    public class FnArg {
-        public name: string;
-        public mutable type: Type;
+    public variant Expr: HasSpan[Expr] {
+        | Unit
+        | Int {
+            public value: int;
+        }
+        | String {
+            public value: string;
+        }
+        | Block {
+            public scope: Scope;
+            public mutable stmts: List[Stmt] = List();
+            
+            public this(parentScope: Scope) {
+                this.scope = Scope(parentScope);
+            } 
+        }
+        | Fn {
+            public args: list[string];
+            public mutable body: Expr;
+            public scope: Scope;
+            
+            public this(parentScope: Scope, args: list[string]) {
+                this.args = args;
+                // TODO ブロックスコープで引数を宣言
+                this.scope = Scope(parentScope);
+            }
+        }
+        | Id { name: string }
+        | Member { expr: Expr; name: string }
+        | Apply { fn: Expr; args: list[Expr] }
+        
+        public typeVar: Hir.TypeVar = TypeVar();
+        public mutable errors: List[Hir.Error] = List();
+        
+        public addError(err: option[Error]): void {
+            match (err) {
+                | Some(e) => errors.Add(e)
+                | _ => {}
+            }
+        }
     }
     
     [Record]
     public class Import {
-        public name: string;
+        public path: list[string];
+        
+        public dotted(): string {
+            def sb = System.Text.StringBuilder();
+            when (path.Length > 0)
+                _ = sb.Append(path.First());
+            when (path.Length > 1) {
+                foreach (s in path.Tail) {
+                    _ = sb.Append("." + s);
+                }
+            }            
+            sb.ToString()
+        }
     }
     
     public class Module {
         public name: string;
-        public mutable imports: list[Import];
+        public imports: List[Import];
         public mutable members: Hashtable[string, list[Expr]]; // overloads
         
         public scope: Scope;
         
         public this(name: string) {
             this.name = name;
-            imports = [];
+            imports = List();
             members = Hashtable();
             
-            scope = Scope(None());
+            scope = Scope();
+        }
+        
+        public import(path: list[string]): void {
+            imports.Add(Import(path))
+            // TODO edit scope
+        }
+        
+        public declareFn(name: string, fn: Expr.Fn): void {
+            
         }
     }
 }
