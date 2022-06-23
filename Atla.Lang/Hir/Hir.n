@@ -24,12 +24,14 @@ namespace Atla.Lang.Hir
         | UndefinedReference { name: string; type: Type }
         | UndefinedType { name: string }
         | TypeInferenceFailure
-        | AmbiguousTypeMember
+        | AmbiguousType { types: list[Type] }
+        | TypeInferenceUnmatched { types: list[Type] }
     }
     
     public variant Stmt: HasSpan[Expr] {
         | Expr { expr: Hir.Expr }
         | Let { name: string; expr: Hir.Expr }
+        | Assign { name: string; expr: Hir.Expr }
         | Return { value: Hir.Expr }
         
         public mutable errors: List[Error];
@@ -39,6 +41,15 @@ namespace Atla.Lang.Hir
                 | Some(e) => errors.Add(e)
                 | _ => {}
             }
+        }
+    }
+    
+    public class FnArg: HasSpan[FnArg] {
+        public name: string;
+        public typeVar: Hir.TypeVar = TypeVar();
+        
+        public this(name: string) {
+            this.name = name;
         }
     }
     
@@ -59,12 +70,12 @@ namespace Atla.Lang.Hir
             } 
         }
         | Fn {
-            public args: list[string];
+            public args: list[FnArg];
             public mutable body: Expr;
             public scope: Scope;
             
             public this(parentScope: Scope, args: list[string]) {
-                this.args = args;
+                this.args = args.Map(a => FnArg(a));
                 // TODO ブロックスコープで引数を宣言
                 this.scope = Scope(parentScope);
             }

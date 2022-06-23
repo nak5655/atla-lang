@@ -17,11 +17,11 @@ namespace Test.HirTest
     class HirTest
     {
         [Test]
-        public TypeUnificationTest(): void {
+        public EasyTypingTest(): void {
             def globalScope = Scope();
             def funcScope = Scope(globalScope);
             def func = Expr.Fn(
-                ["a", "b"],
+                [FnArg("a"), FnArg("b")],
                 {
                     def b = Expr.Block(Scope(funcScope));
                     b.stmts.Add(Stmt.Return(Expr.String("c")));
@@ -37,15 +37,25 @@ namespace Test.HirTest
             Typing().infer(globalScope, func);
             
             Assert.IsInstanceOf(typeof(Type.Fn), func.typeVar.type.Value);
+            Assert.IsInstanceOf(typeof(Type.Native), func.body.typeVar.type.Value);
+        }
+        
+        [Test]
+        public RecursiveTypingTest(): void {
+            def globalScope = Scope();
+            def blockScope = Scope(globalScope);
+            def block = Expr.Block(blockScope);
+            block.stmts.AddRange([
+                Stmt.Let("a", Expr.Int(1)),
+                Stmt.Let("b", Expr.Id("a")),
+                Stmt.Let("c", Expr.Id("b")),
+                Stmt.Assign("c", Expr.Id("b")),
+                Stmt.Expr(Expr.Id("c"))
+            ]);
+            Typing().analyze(globalScope, block);
+            Typing().infer(globalScope, block);
             
-            match (func.typeVar.type) {
-                | Some(Type.Fn(args, ret)) => {
-                    foreach (arg in args) {
-                        Assert.IsInstanceOf(typeof(Type.Native), arg);
-                    }
-                    Assert.IsInstanceOf(typeof(Type.Native), ret);
-                }
-            }
+            Assert.IsInstanceOf(typeof(Type.Fn), block.typeVar.type.Value);
         }
     }
 }

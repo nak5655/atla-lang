@@ -39,6 +39,7 @@ namespace Atla.Lang.Ast
     
     public variant Stmt: HasSpan[Stmt] {
         | Let { name: string; rhs: Ast.Expr }
+        | Assign { name: string; rhs: Ast.Expr }
         | Expr { expr: Ast.Expr }
         | Ret { expr: Ast.Expr }
     }

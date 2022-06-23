@@ -12,12 +12,13 @@ using Atla;
 namespace Atla.Lang.Ast
 {
     // 脱糖
-    // 意味解析 (スコープ構築, 型変数にタイプヒントを追加)
+    // タイプヒントは明示された分だけ
+    // スコープは作るけど操作は無し
     class Trans
     {
         public trans(scope: Hir.Scope, type: Ast.Type): Hir.TypeHint {
             def hint = match (type) {
-                | Ast.Type.Unit => Hir.TypeHint.Name(scope.globalScope(), Hir.Scope.unitTypeName)
+                | Ast.Type.Unit => Hir.TypeHint.Name(scope, Hir.Scope.unitTypeName)
                 | Ast.Type.Fn(args, ret) => Hir.TypeHint.Fn(args.Map(a => Hir.TypeVar(trans(scope, a))), Hir.TypeVar(trans(scope, ret)))
                 | Ast.Type.Id(value) => Hir.TypeHint.Name(scope, value)
                 | Ast.Type.Generics(_base, _params) => Hir.TypeHint.Generics(Hir.TypeVar(trans(scope, _base)), _params.Map(p => Hir.TypeVar(trans(scope, p))))
@@ -30,9 +31,11 @@ namespace Atla.Lang.Ast
                 | Ast.Stmt.Expr(expr) => Hir.Stmt.Expr(trans(scope, expr))
                 | Ast.Stmt.Let(name, expr) => {
                     def rhs = trans(scope, expr);
-                    def let = Hir.Stmt.Let(name, rhs);
-                    scope.declareVar(name, rhs.typeVar);
-                    let
+                    Hir.Stmt.Let(name, rhs)
+                }
+                | Ast.Stmt.Assign(name, expr) => {
+                    def rhs = trans(scope, expr);
+                    Hir.Stmt.Assign(name, rhs)
                 }
                 | Ast.Stmt.Ret(expr) => Hir.Stmt.Return(trans(scope, expr))
             };
@@ -50,14 +53,20 @@ namespace Atla.Lang.Ast
                     block
                 }
                 | Ast.Expr.Fn(args, body) => {
-                    def fnType = Hir.TypeHint.Fn(args.Map(a => Hir.TypeVar(trans(scope, a.type))), Hir.TypeVar());
+                    // 明示されたTypeHintだけ反映する
+                    // (Typingの責任なので、fn.typeVarにTypeHint.Fnは付けない)
                     def fn = Hir.Expr.Fn(scope, args.Map(_.name));
-                    fn.typeVar.addHint(fnType);
+                    foreach ((a, h) in args.Zip(fn.args)) {
+                        h.typeVar.addHint(trans(scope, a.type));
+                    }
                     fn.body = trans(fn.scope, body);
-                    fn.body.typeVar.addHint(Hir.TypeHint.BehaveAs(fnType.ret));
                     fn
                 }
-                | Ast.Expr.Id(value) => Hir.Expr.Id(value)
+                | Ast.Expr.Id(value) => {
+                    def id = Hir.Expr.Id(value);
+                    id.typeVar.addHint(Hir.TypeHint.BehaveAsOneOf(scope.resolveVar(value, id.typeVar).ToNList()));
+                    id
+                }
                 | Ast.Expr.Member(expr, member) => Hir.Expr.Member(trans(scope, expr), member)
                 | Ast.Expr.Apply(fn, args) => Hir.Expr.Apply(trans(scope, fn), args.Map(e => trans(scope, e)))
             }

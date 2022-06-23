@@ -52,17 +52,15 @@ namespace Atla.Lang.Hir
                         analyze(blockScope, stmt, hir.typeVar);
                     }
                 }
-                | Fn(_, body, bodyScope) => {
-                    foreach (hint in hir.typeVar.hints) {
-                        match (hint) {
-                            | TypeHint.Fn(_, ret) => body.typeVar.addHint(TypeHint.BehaveAs(ret))
-                            | _ => ()
-                        }
-                    }
+                | Fn(args, body, bodyScope) => {
+                    def fnType = Hir.TypeHint.Fn(args.Map(_.typeVar), body.typeVar);
+                    hir.typeVar.addHint(fnType);
+                    body.typeVar.addHint(Hir.TypeHint.BehaveAs(fnType.ret));
+                    
                     analyze(bodyScope, body);
                 }
                 | Id(name) => {
-                    def hint = Hir.TypeHint.OneOf(scope.resolveVar(name, hir.typeVar).ToNList());
+                    def hint = Hir.TypeHint.BehaveAsOneOf(scope.resolveVar(name, hir.typeVar).ToNList());
                     _ = hint.addSpan(hir.span);
                     hir.typeVar.addHint(hint);
                 }
@@ -105,6 +103,16 @@ namespace Atla.Lang.Hir
         
         public analyze(scope: Hir.Scope, hir: Hir.Stmt, retType: TypeVar): void {
             match (hir) {
+                | Hir.Stmt.Let(name, rhs) => {
+                    analyze(scope, rhs);
+                    scope.declareVar(name, rhs.typeVar); // 右辺を処理してから変数宣言
+                }
+                | Hir.Stmt.Assign(name, rhs) => {
+                    analyze(scope, rhs);
+                    
+                    def vars = scope.resolveVar(name, rhs.typeVar);
+                    rhs.typeVar.addHint(Hir.TypeHint.BehaveAsOneOf(vars.ToNList()));
+                }
                 | Hir.Stmt.Expr(expr) => analyze(scope, expr)
                 | Hir.Stmt.Return(value) => {
                     value.typeVar.addHint(TypeHint.BehaveAs(retType));
@@ -115,6 +123,12 @@ namespace Atla.Lang.Hir
         
         public infer(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
+                | Hir.Stmt.Let(_, rhs) => {
+                    infer(scope, rhs);
+                }
+                | Hir.Stmt.Assign(_, rhs) => {
+                    infer(scope, rhs);
+                }
                 | Hir.Stmt.Expr(expr) => infer(scope, expr)
                 | Hir.Stmt.Return(value) => {
                     infer(scope, value)

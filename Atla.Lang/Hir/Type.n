@@ -57,6 +57,16 @@ namespace Atla.Lang.Hir
                         // TODO 循環参照危ないかも
                         v.infer()
                     }
+                    | BehaveAsOneOf(vs) => {
+                        def ts = vs.Filter(v => hint.judge(v.infer())).Map(_.infer());
+                        if (ts.Count() == 1) {
+                            ts.First()
+                        } else if (ts.Count() == 0) {
+                            Type.Error(Hir.Error.TypeInferenceUnmatched(vs.Map(_.infer())))
+                        } else {
+                            Type.Error(Hir.Error.AmbiguousType(ts))
+                        }
+                    }
                 }
                 type = Some(type.Map(t => t.unified(hintType)).WithDefault(hintType))
             }
@@ -103,17 +113,19 @@ namespace Atla.Lang.Hir
         }
         | Generics { _base: TypeVar; _params: list[TypeVar] }
         | BehaveAs { var: TypeVar }
-        | OneOf { types: list[TypeVar] } // 順不同
+        | BehaveAsOneOf {
+            types: list[TypeVar];
+        } // 順不同検索: Private Search Engine - Brave Search
         | NoneOf { types: list[TypeVar] }
         
         // TODO recursive type reference
         public judge(type: Type): bool { match (this) {
-            | Hir.TypeHint.Name(scope, s) => match (type) {
-                | Native(t) => match (scope.resolveType(s)) {
-                    | Some(s) => t.Equals(s) // Need Test
+            | Hir.TypeHint.Name(scope, name) => match (type) {
+                | Native(t) => match (scope.resolveType(name)) {
+                    | Some(Native(s)) => t.Equals(s) // Need Test
                     | _ => false
                 }
-                | Class => match (scope.resolveType(s)) {
+                | Class => match (scope.resolveType(name)) {
                     | Some(s) => type.Equals(s) // Need Test
                     | _ => false
                 }
@@ -131,10 +143,10 @@ namespace Atla.Lang.Hir
             | Hir.TypeHint.BehaveAs(var) => {
                 var.hints.All(_.judge(type))
             }
-            | Hir.TypeHint.OneOf(vars) => {
-                vars.Any(v => {
+            | Hir.TypeHint.BehaveAsOneOf(vars) => {
+                vars.Count(v => {
                     v.hints.All(_.judge(type))
-                })
+                }) == 1
             }
             | Hir.TypeHint.NoneOf(vars) => {
                 !vars.Any(v => {
@@ -151,6 +163,13 @@ namespace Atla.Lang.Hir
             
             public override ToString(): string {
                 type.Name
+            }
+            
+            public override Equals(other: object): bool {
+                match (other) {
+                    | Native(t) => t.Equals(type)
+                    | _ => false
+                }
             }
         }
         | Fn {
@@ -180,6 +199,7 @@ namespace Atla.Lang.Hir
                 | (e is Error, _) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(this, other)])
                 | (_, e is Error) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(other, this)])
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x,y) => x.unified(y)), b.unified(d))
+                | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
                 // TODO
                 | _ => Type.Error(Hir.Error.TypeUnificationFailure(this, other))
             }
