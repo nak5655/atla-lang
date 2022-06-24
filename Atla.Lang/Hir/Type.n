@@ -15,9 +15,10 @@ using Atla.Lang;
 namespace Atla.Lang.Hir
 {
     public class TypeVar {
-        public hints: List[TypeHint] = List();
+        public hints: List[TypeHint] = List(); // specialization hints (top down)
+        public genHints: List[TypeVar] = List(); // generalization hints (bottom up)
         public mutable type: option[Type] = None();
-            
+        
         public this() { }
             
         public this(hint: TypeHint) {
@@ -39,6 +40,7 @@ namespace Atla.Lang.Hir
         }
         
         // typeHintsからtypeを推論する
+        // (条件を満たす最も抽象的な型を返す)
         public infer(): Type {
             when (type.IsSome) {
                 return type.Value
@@ -72,9 +74,14 @@ namespace Atla.Lang.Hir
             }
             
             when (type.IsNone) {
-                type = Some(Type.Error(Hir.Error.TypeInferenceFailure()))
+                type = Some(Type.Any())
             }
             
+            type.Value
+        }
+        
+        public genInfer(): Type {
+            type = Some(genHints.Fold(infer(), (v, acc) => acc.generalize(v.genInfer())));
             type.Value
         }
         
@@ -157,6 +164,7 @@ namespace Atla.Lang.Hir
     }
     
     public variant Type {
+        | Any
         | Class {  }
         | Native {
             type: System.Type;
@@ -194,8 +202,10 @@ namespace Atla.Lang.Hir
         public members: Hashtable[string, List[Expr]] = Hashtable();
         public errors: List[Hir.Error] = List();
         
+        // specialize
         public unified(other: Type): Type {
             match ((this, other)) {
+                | (Any, _) => other
                 | (e is Error, _) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(this, other)])
                 | (_, e is Error) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(other, this)])
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x,y) => x.unified(y)), b.unified(d))
@@ -203,6 +213,11 @@ namespace Atla.Lang.Hir
                 // TODO
                 | _ => Type.Error(Hir.Error.TypeUnificationFailure(this, other))
             }
+        }
+        
+        public generalize(other: Type): Type {
+            // TODO
+            unified(other)
         }
     }
 }

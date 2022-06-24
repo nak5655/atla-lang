@@ -50,12 +50,12 @@ namespace Test.HirTest
                 Stmt.Let("b", Expr.Id("a")),
                 Stmt.Let("c", Expr.Id("b")),
                 Stmt.Assign("c", Expr.Id("b")),
-                Stmt.Expr(Expr.Id("c"))
+                Stmt.Return(Expr.Id("c"))
             ]);
             Typing().analyze(globalScope, block);
             Typing().infer(globalScope, block);
             
-            Assert.IsInstanceOf(typeof(Type.Fn), block.typeVar.type.Value);
+            Assert.IsInstanceOf(typeof(Type.Native), block.typeVar.type.Value);
         }
     }
 }

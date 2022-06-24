@@ -16,6 +16,7 @@ namespace Atla.Lang.Hir
         varTable: Hashtable[string, List[Hir.TypeVar]] = Hashtable();
         typeTable: Hashtable[string, Type] = Hashtable();
         implTable: Hashtable[string, Impl] = Hashtable();
+        public retTypeVar: TypeVar = TypeVar();
         
         // Primery Types
         public static unitTypeName: string = "Unit";

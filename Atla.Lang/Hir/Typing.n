@@ -42,14 +42,16 @@ namespace Atla.Lang.Hir
             }
         }
         
+        // 型の関係式をトップダウンで構築
         public analyze(scope: Scope, hir: Hir.Expr): void {
             match (hir) {
                 | Unit => hir.typeVar.addHint(Hir.TypeHint.Name(scope.globalScope(), Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
                 | Int => hir.typeVar.addHint(Hir.TypeHint.Name(scope.globalScope(), Scope.intTypeName))
                 | String => hir.typeVar.addHint(Hir.TypeHint.Name(scope.globalScope(), Scope.stringTypeName))
                 | Block(blockScope, stmts) => {
+                    blockScope.retTypeVar.addHint(Hir.TypeHint.BehaveAs(hir.typeVar));
                     foreach (stmt in stmts) {
-                        analyze(blockScope, stmt, hir.typeVar);
+                        analyze(blockScope, stmt);
                     }
                 }
                 | Fn(args, body, bodyScope) => {
@@ -74,6 +76,7 @@ namespace Atla.Lang.Hir
             }
         }
         
+        // 型をボトムアップで解決
         public infer(scope: Scope, hir: Hir.Expr): void {
             match (hir) {
                 | Unit => hir.typeVar.resolveAs(scope.globalScope().resolveType(Scope.unitTypeName).Value)
@@ -83,6 +86,10 @@ namespace Atla.Lang.Hir
                     foreach (stmt in stmts) {
                         infer(blockScope, stmt)
                     }
+                    
+                    // スコープの返り値で推論
+                    hir.typeVar.genHints.Add(blockScope.retTypeVar);
+                    _ = hir.typeVar.genInfer();
                 }
                 | Fn(_, body, bodyScope) => {
                     infer(bodyScope, body);
@@ -101,7 +108,8 @@ namespace Atla.Lang.Hir
             _ = hir.typeVar.infer()
         }
         
-        public analyze(scope: Hir.Scope, hir: Hir.Stmt, retType: TypeVar): void {
+        // 型の関係式をトップダウンで構築
+        public analyze(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
                 | Hir.Stmt.Let(name, rhs) => {
                     analyze(scope, rhs);
@@ -115,12 +123,13 @@ namespace Atla.Lang.Hir
                 }
                 | Hir.Stmt.Expr(expr) => analyze(scope, expr)
                 | Hir.Stmt.Return(value) => {
-                    value.typeVar.addHint(TypeHint.BehaveAs(retType));
+                    value.typeVar.addHint(TypeHint.BehaveAs(scope.retTypeVar));
                     analyze(scope, value)
                 }
             }
         }
         
+        // 型をボトムアップで解決
         public infer(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
                 | Hir.Stmt.Let(_, rhs) => {
@@ -131,7 +140,9 @@ namespace Atla.Lang.Hir
                 }
                 | Hir.Stmt.Expr(expr) => infer(scope, expr)
                 | Hir.Stmt.Return(value) => {
-                    infer(scope, value)
+                    infer(scope, value);
+                    
+                    scope.retTypeVar.genHints.Add(value.typeVar); // 右辺の型が確定したら、スコープの返り値の型を推論
                 }
             }
         }
