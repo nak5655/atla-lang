@@ -46,7 +46,8 @@ namespace Atla.Lang.Hir
     
     public class FnArg: HasSpan[FnArg] {
         public name: string;
-        public typeVar: Hir.TypeVar = TypeVar();
+        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.Any();
+        public mutable type: Hir.Type = Type.Var();
         
         public this(name: string) {
             this.name = name;
@@ -84,7 +85,8 @@ namespace Atla.Lang.Hir
         | Member { expr: Expr; name: string }
         | Apply { fn: Expr; args: list[Expr] }
         
-        public typeVar: Hir.TypeVar = TypeVar();
+        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.Any();
+        public mutable type: Hir.Type.Var = Type.Var();
         public mutable errors: List[Hir.Error] = List();
         
         public addError(err: option[Error]): void {
@@ -115,7 +117,7 @@ namespace Atla.Lang.Hir
     public class Module {
         public name: string;
         public imports: List[Import];
-        public mutable members: Hashtable[string, list[Expr]]; // overloads
+        public mutable members: Hashtable[string, List[Expr]]; // overloads
         
         public scope: Scope;
         
@@ -133,7 +135,11 @@ namespace Atla.Lang.Hir
         }
         
         public declareFn(name: string, fn: Expr.Fn): void {
+            when (!members.ContainsKey(name))
+                members.Add(name, List());
             
+            def overloads = members[name];
+            overloads.Add(fn)
         }
     }
 }

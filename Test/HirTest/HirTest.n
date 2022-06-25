@@ -29,15 +29,14 @@ namespace Test.HirTest
                 },
                 funcScope
             );
-            func.typeVar.addHint(TypeHint.Fn([
-                TypeVar(TypeHint.Name(globalScope, Scope.intTypeName)),
-                TypeVar(TypeHint.Name(globalScope, Scope.intTypeName)),
-            ], TypeVar(TypeHint.Name(globalScope, Scope.stringTypeName))));
-            Typing().analyze(globalScope, func);
-            Typing().infer(globalScope, func);
+            func.typeHint = TypeHint.Fn([
+                TypeHint.Name(Scope.intTypeName),
+                TypeHint.Name(Scope.intTypeName),
+            ], TypeHint.Name(Scope.stringTypeName));
+            Typing().typing(globalScope, func, Type.Any());
             
-            Assert.IsInstanceOf(typeof(Type.Fn), func.typeVar.type.Value);
-            Assert.IsInstanceOf(typeof(Type.Native), func.body.typeVar.type.Value);
+            Assert.IsInstanceOf(typeof(Type.Fn), func.type.resolved());
+            Assert.IsInstanceOf(typeof(Type.Native), func.type.resolved());
         }
         
         [Test]
@@ -52,10 +51,27 @@ namespace Test.HirTest
                 Stmt.Assign("c", Expr.Id("b")),
                 Stmt.Return(Expr.Id("c"))
             ]);
-            Typing().analyze(globalScope, block);
-            Typing().infer(globalScope, block);
+            Typing().typing(globalScope, block, Type.Any());
             
-            Assert.IsInstanceOf(typeof(Type.Native), block.typeVar.type.Value);
+            Assert.IsInstanceOf(typeof(Type.Native), block.type.resolved());
+        }
+        
+        [Test]
+        public RecursiveFnTypingTest(): void {
+            def mod = Module("main");
+            def mainFn = Expr.Fn(mod.scope, ["a"]);
+            def mainFnBody = Expr.Block(mainFn.scope);
+            mainFnBody.stmts.AddRange([
+                Stmt.Let("b", Expr.Id("a")),
+                Stmt.Assign("b", Expr.Int(1)),
+                Stmt.Return(Expr.Id("b"))
+            ]);
+            mainFn.body = mainFnBody;
+            mod.declareFn("main", mainFn);
+            Typing().typing(mod);
+            
+            def fnType = mainFn.type.resolved() :> Type.Fn;
+            Assert.AreEqual(typeof(int), (fnType.ret :> Type.Native).type);
         }
     }
 }

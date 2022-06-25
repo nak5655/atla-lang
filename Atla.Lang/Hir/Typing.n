@@ -25,124 +25,75 @@ namespace Atla.Lang.Hir
             // first, declare members
             foreach ((id, member) in hir.members.KeyValuePairs) {
                 foreach (overload in member) {
-                    hir.scope.declareVar(id, overload.typeVar)
+                    hir.scope.declareVar(id, overload.type)
                 }
             }
             // next, analyze the type hints.
             foreach ((_, member) in hir.members.KeyValuePairs) {
                 foreach (overload in member) {
-                    analyze(hir.scope, overload);
-                }
-            }
-            // next, infer the types.
-            foreach ((_, member) in hir.members.KeyValuePairs) {
-                foreach (overload in member) {
-                    infer(hir.scope, overload);
+                    typing(hir.scope, overload, Type.Any());
                 }
             }
         }
         
-        // 型の関係式をトップダウンで構築
-        public analyze(scope: Scope, hir: Hir.Expr): void {
+        // トップダウンで型を構築してボトムアップで型推論
+        public typing(scope: Scope, hir: Hir.Expr, expected: Type): void {
+            hir.type.specialize(hir.typeHint.resolve(scope));
+            
             match (hir) {
-                | Unit => hir.typeVar.addHint(Hir.TypeHint.Name(scope.globalScope(), Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
-                | Int => hir.typeVar.addHint(Hir.TypeHint.Name(scope.globalScope(), Scope.intTypeName))
-                | String => hir.typeVar.addHint(Hir.TypeHint.Name(scope.globalScope(), Scope.stringTypeName))
-                | Block(blockScope, stmts) => {
-                    blockScope.retTypeVar.addHint(Hir.TypeHint.BehaveAs(hir.typeVar));
-                    foreach (stmt in stmts) {
-                        analyze(blockScope, stmt);
-                    }
-                }
-                | Fn(args, body, bodyScope) => {
-                    def fnType = Hir.TypeHint.Fn(args.Map(_.typeVar), body.typeVar);
-                    hir.typeVar.addHint(fnType);
-                    body.typeVar.addHint(Hir.TypeHint.BehaveAs(fnType.ret));
-                    
-                    analyze(bodyScope, body);
-                }
-                | Id(name) => {
-                    def hint = Hir.TypeHint.BehaveAsOneOf(scope.resolveVar(name, hir.typeVar).ToNList());
-                    _ = hint.addSpan(hir.span);
-                    hir.typeVar.addHint(hint);
-                }
-                | Member(expr, _) => analyze(scope, expr)
-                | Apply(fn, args) => {
-                    analyze(scope, fn);
-                    foreach (arg in args) {
-                        analyze(scope, arg);
-                    }
-                }
-            }
-        }
-        
-        // 型をボトムアップで解決
-        public infer(scope: Scope, hir: Hir.Expr): void {
-            match (hir) {
-                | Unit => hir.typeVar.resolveAs(scope.globalScope().resolveType(Scope.unitTypeName).Value)
-                | Int => hir.typeVar.resolveAs(scope.globalScope().resolveType(Scope.intTypeName).Value)
-                | String => hir.typeVar.resolveAs(scope.globalScope().resolveType(Scope.stringTypeName).Value)
+                | Unit => hir.type.specialize(scope.globalScope().resolveType(Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
+                | Int => hir.type.specialize(scope.globalScope().resolveType(Scope.intTypeName))
+                | String => hir.type.specialize(scope.globalScope().resolveType(Scope.stringTypeName))
                 | Block(blockScope, stmts) => {
                     foreach (stmt in stmts) {
-                        infer(blockScope, stmt)
+                        typing(blockScope, stmt);
                     }
                     
                     // スコープの返り値で推論
-                    hir.typeVar.genHints.Add(blockScope.retTypeVar);
-                    _ = hir.typeVar.genInfer();
+                    hir.type.generalize(blockScope.retType);
                 }
-                | Fn(_, body, bodyScope) => {
-                    infer(bodyScope, body);
+                | Fn(args, body, bodyScope) => {
+                    def argTypes = args.Map(arg => arg.typeHint.resolve(scope));
+                    typing(bodyScope, body, Type.Any());
+                    
+                    hir.type.generalize(Type.Fn(argTypes, body.type));
                 }
-                | Id => {}
-                | Member(expr, _) => {
-                    infer(scope, expr)
+                | Id(name) => {
+                    hir.type.specialize(scope.resolveVar(name, expected));
                 }
+                | Member(expr, name) => typing(scope, expr, Type.Any())
                 | Apply(fn, args) => {
-                    infer(scope, fn);
-                    foreach (arg in args) {
-                        infer(scope, arg);
+                    def argTypes = match (fn.type.unVar()) {
+                        | Type.Fn(ts, _) when args.Length == ts.Length => ts
+                        | _ => args.Map(_ => Type.Any())
                     }
+                    foreach ((arg, t) in args.Zip(argTypes)) {
+                        typing(scope, arg, t);
+                    }
+                    
+                    def fnType = Type.Fn(args.Map(_.type), expected);
+                    typing(scope, fn, fnType);
                 }
             }
-            _ = hir.typeVar.infer()
         }
         
         // 型の関係式をトップダウンで構築
-        public analyze(scope: Hir.Scope, hir: Hir.Stmt): void {
+        public typing(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
                 | Hir.Stmt.Let(name, rhs) => {
-                    analyze(scope, rhs);
-                    scope.declareVar(name, rhs.typeVar); // 右辺を処理してから変数宣言
+                    typing(scope, rhs, Type.Any()); // TODO type hint
+                    scope.declareVar(name, rhs.type); // 右辺を処理してから変数宣言
                 }
                 | Hir.Stmt.Assign(name, rhs) => {
-                    analyze(scope, rhs);
-                    
-                    def vars = scope.resolveVar(name, rhs.typeVar);
-                    rhs.typeVar.addHint(Hir.TypeHint.BehaveAsOneOf(vars.ToNList()));
+                    typing(scope, rhs, Type.Any());
+                    // 右辺から左辺の型を推論
+                    def destType = scope.resolveVar(name, Type.Any());
+                    _ = destType.specialize(rhs.type)
                 }
-                | Hir.Stmt.Expr(expr) => analyze(scope, expr)
+                | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Any())
                 | Hir.Stmt.Return(value) => {
-                    value.typeVar.addHint(TypeHint.BehaveAs(scope.retTypeVar));
-                    analyze(scope, value)
-                }
-            }
-        }
-        
-        // 型をボトムアップで解決
-        public infer(scope: Hir.Scope, hir: Hir.Stmt): void {
-            match (hir) {
-                | Hir.Stmt.Let(_, rhs) => {
-                    infer(scope, rhs);
-                }
-                | Hir.Stmt.Assign(_, rhs) => {
-                    infer(scope, rhs);
-                }
-                | Hir.Stmt.Expr(expr) => infer(scope, expr)
-                | Hir.Stmt.Return(value) => {
-                    infer(scope, value);
-                    
-                    scope.retTypeVar.genHints.Add(value.typeVar); // 右辺の型が確定したら、スコープの返り値の型を推論
+                    typing(scope, value, Type.Any());
+                    scope.retType.generalize(value.type) // 返り値でスコープの型を推論
                 }
             }
         }

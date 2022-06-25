@@ -14,88 +14,9 @@ using Atla.Lang;
 
 namespace Atla.Lang.Hir
 {
-    public class TypeVar {
-        public hints: List[TypeHint] = List(); // specialization hints (top down)
-        public genHints: List[TypeVar] = List(); // generalization hints (bottom up)
-        public mutable type: option[Type] = None();
-        
-        public this() { }
-            
-        public this(hint: TypeHint) {
-            hints.Add(hint);
-        }
-            
-        public addHint(hint: TypeHint): void {
-            hints.Add(hint);
-        }
-        
-        // type型として解決する
-        public resolveAs(type: Type): void {
-            this.type = Some(type);
-        }
-        
-        // type型として解釈できるか
-        public judge(type: Type): bool {
-            hints.All(_.judge(type))
-        }
-        
-        // typeHintsからtypeを推論する
-        // (条件を満たす最も抽象的な型を返す)
-        public infer(): Type {
-            when (type.IsSome) {
-                return type.Value
-            }
-            
-            foreach (hint in hints) {
-                // TODO
-                def hintType = match (hint) {
-                    | Name(scope, s) => {
-                        scope.resolveType(s).WithDefault(Type.Error(Hir.Error.UndefinedType(s)))
-                    }
-                    | Fn(args, ret) => {
-                        Type.Fn(args.Map(_.infer()), ret.infer());
-                    }
-                    | BehaveAs(v) => {
-                        // TODO 循環参照危ないかも
-                        v.infer()
-                    }
-                    | BehaveAsOneOf(vs) => {
-                        def ts = vs.Filter(v => hint.judge(v.infer())).Map(_.infer());
-                        if (ts.Count() == 1) {
-                            ts.First()
-                        } else if (ts.Count() == 0) {
-                            Type.Error(Hir.Error.TypeInferenceUnmatched(vs.Map(_.infer())))
-                        } else {
-                            Type.Error(Hir.Error.AmbiguousType(ts))
-                        }
-                    }
-                }
-                type = Some(type.Map(t => t.unified(hintType)).WithDefault(hintType))
-            }
-            
-            when (type.IsNone) {
-                type = Some(Type.Any())
-            }
-            
-            type.Value
-        }
-        
-        public genInfer(): Type {
-            type = Some(genHints.Fold(infer(), (v, acc) => acc.generalize(v.genInfer())));
-            type.Value
-        }
-        
-        public override ToString(): string {
-            match (type) {
-                | Some(t) => t.ToString()
-                | _ => Misc.joinToString(" + ", hints)
-            }
-        }
-    }
-    
     public variant TypeHint: HasSpan[TypeHint] {
+        | Any
         | Name {
-            scope: Scope;
             name: string;
             
             public override ToString(): string {
@@ -103,7 +24,7 @@ namespace Atla.Lang.Hir
             }
         }
         | Fn {
-            args: list[TypeVar]; ret: TypeVar;
+            args: list[TypeHint]; ret: TypeHint;
             
             public override ToString(): string {
                 def sb = StringBuilder();
@@ -118,60 +39,58 @@ namespace Atla.Lang.Hir
                 sb.ToString()
             }
         }
-        | Generics { _base: TypeVar; _params: list[TypeVar] }
-        | BehaveAs { var: TypeVar }
-        | BehaveAsOneOf {
-            types: list[TypeVar];
-        } // 順不同検索: Private Search Engine - Brave Search
-        | NoneOf { types: list[TypeVar] }
+        | Generics { _base: TypeHint; _params: list[TypeHint] }
         
-        // TODO recursive type reference
-        public judge(type: Type): bool { match (this) {
-            | Hir.TypeHint.Name(scope, name) => match (type) {
-                | Native(t) => match (scope.resolveType(name)) {
-                    | Some(Native(s)) => t.Equals(s) // Need Test
-                    | _ => false
-                }
-                | Class => match (scope.resolveType(name)) {
-                    | Some(s) => type.Equals(s) // Need Test
-                    | _ => false
-                }
-                | _ => false
-            }
-            | Hir.TypeHint.Fn(args, ret) => match (type) {
-                | f is Type.Fn when f.args.Length == args.Length => args.Zip(f.args).All((c, t) => c.judge(t)) && ret.judge(f)
-                | Native => false // TODO
-                | _ => false
-            }
-            | Hir.TypeHint.Generics(_base, _params) => match (type) {
-                | Type.Generics(b, ps) when _params.Length == ps.Length => _base.judge(b) && ps.Zip(_params).All((p, _p) => _p.judge(p))
-                | _ => false
-            }
-            | Hir.TypeHint.BehaveAs(var) => {
-                var.hints.All(_.judge(type))
-            }
-            | Hir.TypeHint.BehaveAsOneOf(vars) => {
-                vars.Count(v => {
-                    v.hints.All(_.judge(type))
-                }) == 1
-            }
-            | Hir.TypeHint.NoneOf(vars) => {
-                !vars.Any(v => {
-                    v.hints.All(_.judge(type))
-                })
-            }
+        public resolve(scope: Scope): Type { match (this) {
+            | Hir.TypeHint.Any => Type.Any()
+            | Hir.TypeHint.Name(name) => scope.resolveType(name)
+            | Hir.TypeHint.Fn(args, ret) => Type.Fn(args.Map(arg => arg.resolve(scope)), ret.resolve(scope))
+            | Hir.TypeHint.Generics(_base, _params) => Type.Generics(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
         }}
     }
     
     public variant Type {
-        | Any
-        | Class {  }
-        | Native {
-            type: System.Type;
+        | Any {
+            public override ToString(): string {
+                "Any"
+            }
+        }
+        | Var {
+            public mutable instance: Type;
+            
+            public this() {
+                instance = Any();
+            }
+            
+            // VarがVarを参照する場合、途中の参照は無意味なので経路圧縮する
+            // (間の型変数のinstanceは変わらないことが保証できる)
+            public simplify(): Var {
+                match (instance) {
+                    | Var(v is Var) => {
+                        instance = v
+                    }
+                    | _ => {}
+                }
+                this
+            }
+            
+            // pruneと違って型関数内の型変数を置換しない
+            public unVar(): Type {
+                match (instance) {
+                    | it is Var => it.unVar()
+                    | _ => instance
+                }
+            }
             
             public override ToString(): string {
-                type.Name
+                $"Var($instance)"
             }
+        }
+        | Class {
+            public members: Hashtable[string, List[Expr]] = Hashtable();
+        }
+        | Native {
+            public type: System.Type;
             
             public override Equals(other: object): bool {
                 match (other) {
@@ -179,13 +98,17 @@ namespace Atla.Lang.Hir
                     | _ => false
                 }
             }
+            
+            public override ToString(): string {
+                $"Native($type)"
+            }
         }
         | Fn {
             args: list[Type]; ret: Type;
             
             public override ToString(): string {
-                def a = Misc.joinToString(", ", args);
-                $"($a): $ret"
+                def argsStr = Misc.joinToString(", ", args);
+                $"Fn($argsStr): $ret"
             }
         }
         | Generics { _base: Type; _params: list[Type] }
@@ -199,25 +122,69 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public members: Hashtable[string, List[Expr]] = Hashtable();
         public errors: List[Hir.Error] = List();
         
-        // specialize
-        public unified(other: Type): Type {
+        // thisがotherの特化であるならtrue
+        public canSpecialize(other: Type): bool {
+            def op = other.resolved(); // ここでotherを解決する(最初だけ)
+            _canSpecialize(op) // 再帰で処理
+        }
+        // 再帰用
+        _canSpecialize(other: Type): bool {
+            match ((this, other)) {
+                | (Any, _) => true
+                | (e is Error, _) => false
+                | (_, e is Error) => false
+                | (Var(t), _) => t._canSpecialize(other)
+                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x._canSpecialize(y)) && b._canSpecialize(d)
+                | (Native(a), Native(b)) when a.Equals(b) => true // TODO ネイティブの継承を考慮する
+                // TODO
+                | _ => false
+            }
+        }
+        
+        public specialize(other: Type): Type {
             match ((this, other)) {
                 | (Any, _) => other
                 | (e is Error, _) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(this, other)])
                 | (_, e is Error) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(other, this)])
-                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x,y) => x.unified(y)), b.unified(d))
+                | (it is Var, _) => {
+                    it.instance = it.instance.specialize(other);
+                    it.simplify()
+                }
+                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.specialize(y)), b.specialize(d))
                 | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
                 // TODO
                 | _ => Type.Error(Hir.Error.TypeUnificationFailure(this, other))
             }
         }
         
-        public generalize(other: Type): Type {
+        public generalize(other: Type): void {
             // TODO
-            unified(other)
+            specialize(other)
+        }
+        
+        // thisは変更しないで型変数を可能な限り取り除く
+        public resolved(): Type {
+            match (this) {
+                | Var(t) => t.resolved()
+                | Fn(args, ret) => Fn(args.Map(_.resolved()), ret.resolved())
+                | Generics(b, ps) => Generics(b.resolved(), ps.Map(_.resolved()))
+                | _ => this
+            }
+        }
+        
+        public occursIn(other: Type): bool {
+            when (this == other) {
+                return true
+            }
+            
+            match (other) {
+                | Var(t) => occursIn(t)
+                | Fn(args, ret) => args.Any(arg => occursIn(arg)) || occursIn(ret)
+                | Generics(b, ps) => occursIn(b) || ps.Any(p => occursIn(p))
+                | _ => false
+            }
         }
     }
 }

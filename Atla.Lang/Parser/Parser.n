@@ -213,26 +213,26 @@ namespace Atla.Lang.Parser
             });
             stmt.impl = retStmt._or(exprStmt);
             
-            def typeHintFactor: Parser[Token, Ast.Type] = id.map(a => {
-                spanned(Type.Id((a :> Expr.Id).value), [a])
+            def typeHintFactor: Parser[Token, Ast.TypeHint] = id.map(a => {
+                spanned(TypeHint.Id((a :> Expr.Id).value), [a])
             });
-            def typeHintParen: Parser[Token, Ast.Type] = delim("(")._and(typeHintFactor.optional().map(mt => {
+            def typeHintParen: Parser[Token, Ast.TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
                 match (mt) {
                     | Some(t) => t
-                    | _ => Type.Unit()
+                    | _ => TypeHint.Unit()
                 }
             }))._and(delim(")")).map((ab, c) => spanned(ab[1], [ab[0], c]));
             def typeHintTerm = typeHintParen._or(typeHintFactor);
-            def typeHint = typeHintTerm.many1().map(ts => {
+            def typeHint: Parser[Token, Ast.TypeHint] = typeHintTerm.many1().map(ts => {
                 if (ts.Length == 1)
                     ts.First()
                 else
-                    Type.Generics(ts.Last(), ts.FirstN(ts.Length - 1))
+                    TypeHint.Generics(ts.Last(), ts.FirstN(ts.Length - 1))
             });
             
             // Decls
-            def fnArg: Parser[Token, FnArg] = delim("(")._andR(id)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
-                spanned(FnArg((a :> Expr.Id).value, b), [a.span, b.span])
+            def fnArg: Parser[Token, FnArg] = delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
+                spanned(FnArg(a.value, b), [a.span, b.span])
             });
             def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
             def fnBody = stmt.many().map(stmts => spanned(Expr.Block(stmts), stmts));
@@ -244,11 +244,11 @@ namespace Atla.Lang.Parser
             }))).map((a, b) => spanned(b, [a]));
             
             def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                def (s, t) = s_t: Token.Id * Ast.Type;
+                def (s, t) = s_t: Token.Id * Ast.TypeHint;
                 ClassItem.Field(s.value, t, false, e)
             })).map((a, b) => spanned(b, [a]));
             def classVarField: Parser[Token, ClassItem] = delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                def (s, t) = s_t: Token.Id * Ast.Type;
+                def (s, t) = s_t: Token.Id * Ast.TypeHint;
                 ClassItem.Field(s.value, t, true, e)
             })).map((a, b) => spanned(b, [a]));
             def classMethod: Parser[Token, ClassItem] = fnDecl.map(d => {

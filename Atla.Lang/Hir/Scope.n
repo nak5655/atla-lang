@@ -13,10 +13,10 @@ namespace Atla.Lang.Hir
     // a.k.a SymbolTable or Environment
     public class Scope {
         parent: option[Scope] = None();
-        varTable: Hashtable[string, List[Hir.TypeVar]] = Hashtable();
+        varTable: Hashtable[string, List[Type.Var]] = Hashtable();
         typeTable: Hashtable[string, Type] = Hashtable();
         implTable: Hashtable[string, Impl] = Hashtable();
-        public retTypeVar: TypeVar = TypeVar();
+        public retType: Type = Type.Var();
         
         // Primery Types
         public static unitTypeName: string = "Unit";
@@ -46,20 +46,19 @@ namespace Atla.Lang.Hir
             typeTable.Add(id, type)
         }
         
-        public resolveType(id: string): option[Type] {
+        public resolveType(id: string): Type {
             if (typeTable.ContainsKey(id)) {
-                typeTable.Get(id)
+                typeTable.Get(id).Value
             } else if (parent.IsSome) {
                 parent.Value.resolveType(id)
             } else {
-                None()
+                Type.Error(Error.UndefinedType(id))
             }
         }
         
-        public declareVar(id: string, type: Hir.TypeVar): void {
+        public declareVar(id: string, type: Type.Var): void {
             if (varTable.ContainsKey(id)) {
                 def types = varTable.Get(id).Value;
-                type.addHint(TypeHint.NoneOf(types.ToNList())); // すでに宣言されている型と重複してはいけない
                 types.Add(type);
             } else {
                 varTable.Set(id, [type].ToList());
@@ -67,16 +66,25 @@ namespace Atla.Lang.Hir
         }
         
         // 名前解決での優先順で返す（内側のスコープを優先）
-        public resolveVar(id: string, type: Hir.TypeVar): List[Hir.TypeVar] {
-            def vars = if (varTable.ContainsKey(id)) {
-                varTable.Get(id).Value
-            } else {
-                List()
+        public resolveVar(id: string, type: Hir.Type): Hir.Type {
+            when (varTable.ContainsKey(id)) {
+                def ts = varTable.Get(id).Value.Filter(t => type.canSpecialize(t));
+                return if (ts.Length == 0) {
+                    match (parent) {
+                        | Some(s) => s.resolveVar(id, type)
+                        | _ => Type.Error(Error.UndefinedReference(id, type))
+                    }
+                } else if (ts.Length == 1) {
+                    ts.First()
+                } else {
+                    Type.Error(Error.AmbiguousType(ts))
+                }
             }
-            when (parent.IsSome) {
-                vars.AddRange(parent.Value.resolveVar(id, type));
+            
+            match (parent) {
+                | Some(s) => s.resolveVar(id, type)
+                | _ => Type.Error(Error.UndefinedReference(id, type))
             }
-            vars
         }
     }
 }

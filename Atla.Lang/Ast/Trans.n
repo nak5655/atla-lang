@@ -3,6 +3,7 @@ using Nemerle.Assertions;
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
@@ -16,14 +17,20 @@ namespace Atla.Lang.Ast
     // スコープは作るけど操作は無し
     class Trans
     {
-        public trans(scope: Hir.Scope, type: Ast.Type): Hir.TypeHint {
-            def hint = match (type) {
-                | Ast.Type.Unit => Hir.TypeHint.Name(scope, Hir.Scope.unitTypeName)
-                | Ast.Type.Fn(args, ret) => Hir.TypeHint.Fn(args.Map(a => Hir.TypeVar(trans(scope, a))), Hir.TypeVar(trans(scope, ret)))
-                | Ast.Type.Id(value) => Hir.TypeHint.Name(scope, value)
-                | Ast.Type.Generics(_base, _params) => Hir.TypeHint.Generics(Hir.TypeVar(trans(scope, _base)), _params.Map(p => Hir.TypeVar(trans(scope, p))))
+        public trans(typeHint: Ast.TypeHint): Hir.TypeHint {
+            def hint = match (typeHint) {
+                | Ast.TypeHint.Unit => Hir.TypeHint.Name(Hir.Scope.unitTypeName)
+                | Ast.TypeHint.Fn(args, ret) => Hir.TypeHint.Fn(args.Map(trans), trans(ret))
+                | Ast.TypeHint.Id(value) => Hir.TypeHint.Name(value)
+                | Ast.TypeHint.Generics(_base, _params) => Hir.TypeHint.Generics(trans(_base), _params.Map(trans))
             };
-            hint.addSpan(type.span)
+            
+            hint.addSpan(typeHint.span)
+        }
+        
+        public trans(typeHint: option[Ast.TypeHint]): Hir.TypeHint {
+            if (typeHint.IsNone) Hir.TypeHint.Any() else trans(typeHint.Value)
+                
         }
         
         public trans(scope: Hir.Scope, ast: Ast.Stmt): Hir.Stmt {
@@ -53,23 +60,18 @@ namespace Atla.Lang.Ast
                     block
                 }
                 | Ast.Expr.Fn(args, body) => {
-                    // 明示されたTypeHintだけ反映する
-                    // (Typingの責任なので、fn.typeVarにTypeHint.Fnは付けない)
                     def fn = Hir.Expr.Fn(scope, args.Map(_.name));
                     foreach ((a, h) in args.Zip(fn.args)) {
-                        h.typeVar.addHint(trans(scope, a.type));
+                        h.typeHint = trans(a.typeHint);
                     }
                     fn.body = trans(fn.scope, body);
                     fn
                 }
-                | Ast.Expr.Id(value) => {
-                    def id = Hir.Expr.Id(value);
-                    id.typeVar.addHint(Hir.TypeHint.BehaveAsOneOf(scope.resolveVar(value, id.typeVar).ToNList()));
-                    id
-                }
+                | Ast.Expr.Id(value) => Hir.Expr.Id(value)
                 | Ast.Expr.Member(expr, member) => Hir.Expr.Member(trans(scope, expr), member)
                 | Ast.Expr.Apply(fn, args) => Hir.Expr.Apply(trans(scope, fn), args.Map(e => trans(scope, e)))
             }
+            expr.typeHint = trans(ast.typeHint);
             expr.addSpan(ast.span)
         }
         
@@ -77,17 +79,14 @@ namespace Atla.Lang.Ast
             match (ast) {
                 | Ast.Decl.Import(path) => mod.import(path)
                 | Ast.Decl.Fn(name, args, ret, body) => {
-                    def fnType = Hir.TypeHint.Fn(args.Map(a => Hir.TypeVar(trans(mod.scope, a.type))), Hir.TypeVar(trans(mod.scope, ret)));
+                    def fnType = Hir.TypeHint.Fn(args.Map(a => trans(a.typeHint)), trans(ret));
                     _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
                     
                     def fn = Hir.Expr.Fn(mod.scope, args.Map(_.name));
-                    fn.typeVar.addHint(fnType);
+                    fn.typeHint = fnType;
+                    
                     mod.declareFn(name, fn);
                     fn.body = trans(fn.scope, body); // 関数宣言でスコープを作ってから本体を定義
-                    
-                    def retType = Hir.TypeHint.BehaveAs(fnType.ret);
-                    _ = retType.addSpan(ret.span);
-                    fn.body.typeVar.addHint(retType);
                 }
             }
         }

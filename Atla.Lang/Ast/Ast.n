@@ -13,17 +13,17 @@ using Atla.Lang.Parse;
 
 namespace Atla.Lang.Ast
 {
-    public variant Type: HasSpan[Type] {
+    public variant TypeHint: HasSpan[TypeHint] {
         | Unit
-        | Fn { args: list[Type]; ret: Type }
+        | Fn { args: list[TypeHint]; ret: TypeHint }
         | Id { value: string }
-        | Generics { type: Type; _params: list[Type] }
+        | Generics { typeHint: TypeHint; _params: list[TypeHint] }
     }
     
     [Record]
     public class FnArg: HasSpan[FnArg] {
         public name: string;
-        public type: Type;
+        public typeHint: TypeHint;
     }
     
     public variant Expr: HasSpan[Expr] {
@@ -35,6 +35,8 @@ namespace Atla.Lang.Ast
         | Fn { args: list[FnArg]; body: Expr }
         | Member { obj: Expr; member: string }
         | Apply { fn: Expr; args: list[Expr] }
+        
+        public typeHint: option[TypeHint] = None();
     }
     
     public variant Stmt: HasSpan[Stmt] {
@@ -45,14 +47,14 @@ namespace Atla.Lang.Ast
     }
     
     public variant ClassItem: HasSpan[ClassItem] {
-        | Field { name: string; type: Type; mut: bool; init: option[Expr] }
+        | Field { name: string; typeHint: TypeHint; mut: bool; init: option[Expr] }
         | Method { name: string; args: list[FnArg]; body: Expr }
         | Error { reason: string }
     }
     
     public variant Decl: HasSpan[Decl] {
         | Class { name: string; items: list[ClassItem] }
-        | Fn { name: string; args: list[FnArg]; ret: Type; body: Ast.Expr }
+        | Fn { name: string; args: list[FnArg]; ret: TypeHint; body: Ast.Expr }
         | Import { path: list[string] }
         | Error { reason: string }
     }
