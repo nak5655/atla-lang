@@ -37,6 +37,29 @@ namespace Test.ParserTest
         }
         
         [Test]
+        public EasyBinOpTest(): void {
+            def lexer = Lexer();
+            match (lexer.tokenize("2 + 5 * (10 - 1) == 47")) {
+                | Result.Success(tokens, _) => {
+                    match (Parser().expr.parse(TokenInput(tokens, 0))) {
+                        | Result.Success(result, _) => {
+                            def a = result :> Expr.Apply;
+                            Assert.AreEqual("==", (a.fn :> Expr.Id).value);
+                            def b = a.args.ElementAt(0) :> Expr.Apply;
+                            Assert.AreEqual("+", (b.fn :> Expr.Id).value);
+                            def c = b.args.ElementAt(1) :> Expr.Apply;
+                            Assert.AreEqual("*", (c.fn :> Expr.Id).value);
+                            def d = c.args.ElementAt(1) :> Expr.Apply;
+                            Assert.AreEqual("-", (d.fn :> Expr.Id).value);
+                        }
+                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
+                    }
+                }
+                | _ => throw System.Exception("failed to tokenize.")
+            }
+        }
+        
+        [Test]
         public EasyTest(): void {
             def code = readCase("easy.atla");
             

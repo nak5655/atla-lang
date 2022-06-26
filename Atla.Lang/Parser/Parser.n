@@ -1,4 +1,4 @@
-using Nemerle;
+﻿using Nemerle;
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
@@ -190,21 +190,42 @@ namespace Atla.Lang.Parser
         
         public this() {
             def tid: Parser[Token, Token.Id] = satisfy("id", _ is Token.Id).map(_ :> Token.Id);
-            def id = tid.map(t => spanned(Expr.Id(t.value), [t]));
-            def int = satisfy("int", _ is Token.Int).map(t => spanned(Expr.Int((t :> Token.Int).value), [t]));
-            def str = satisfy("string", _ is Token.String).map(t => spanned(Expr.String((t :> Token.String).value), [t]));
-            def factor = str._or(id)._or(int)._or(delim("(")._andR(expr)._andL(delim(")")));
+            def infixOp(precedence: int): Parser[Token, Token.InfixOp] {
+                satisfy("infixOp", t => t is Token.InfixOp && (t :> Token.InfixOp).precedence == precedence).map(_ :> Token.InfixOp)
+            }
             
-            def member = factor._andL(delim("."))._and(tid).map((a, b) => spanned(Expr.Member(a, b.value), [a.span, b.span]));
-            def blockExpr = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => spanned(Expr.Block(stmts), stmts)); // TODO: block name
-            def term = blockExpr._or(member)._or(factor);
+            // Expr
+            {
+                def id = tid.map(t => spanned(Expr.Id(t.value), [t]));
+                def int = satisfy("int", _ is Token.Int).map(t => spanned(Expr.Int((t :> Token.Int).value), [t]));
+                def str = satisfy("string", _ is Token.String).map(t => spanned(Expr.String((t :> Token.String).value), [t]));
+                def paren = delim("(")._andR(expr)._andL(delim(")"));
+                def block = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => spanned(Expr.Block(stmts), stmts)); // TODO: block name
+                def factor = str._or(id)._or(int)._or(paren)._or(block);
             
-            expr.impl = term.many1().map(es => {
-                if (es.Length == 1)
-                    es.First()
-                else
-                    spanned(Expr.Apply(es.First(), es.Tail), es)
-            });
+                // メンバーアクセス
+                def member = factor._andL(delim("."))._and(tid).map((a, b) => spanned(Expr.Member(a, b.value), [a.span, b.span]));
+                def term1 = member._or(factor);
+                
+                // 呼び出し式
+                def term2 = term1.many1().map(es => {
+                    if (es.Length == 1)
+                        es.First()
+                    else
+                        spanned(Expr.Apply(es.First(), es.Tail), es)
+                });
+                
+                // 二項演算
+                // 優先順位と逆順なので注意(term3がpreced6, term6がpreced3になる)
+                def term6 = Enumerable.Range(3, 4).Reverse().Map(i => infixOp(i)).Fold(term2, (op, acc) => acc._and(op)._and(acc).map((a_op, b) => {
+                    def a = a_op[0];
+                    def op = a_op[1];
+                    def fn = Expr.Id(op.value).addSpan(op.span);
+                    Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
+                })._or(acc));
+            
+                expr.impl = term6;
+            }
             
             exprStmt = expr.map(e => spanned(Stmt.Expr(e), [e]));
             retStmt = delim("return")._and(expr.optional()).map((a, b) => {
@@ -213,8 +234,8 @@ namespace Atla.Lang.Parser
             });
             stmt.impl = retStmt._or(exprStmt);
             
-            def typeHintFactor: Parser[Token, Ast.TypeHint] = id.map(a => {
-                spanned(TypeHint.Id((a :> Expr.Id).value), [a])
+            def typeHintFactor: Parser[Token, Ast.TypeHint] = tid.map(a => {
+                spanned(TypeHint.Id(a.value), [a])
             });
             def typeHintParen: Parser[Token, Ast.TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
                 match (mt) {
@@ -236,11 +257,11 @@ namespace Atla.Lang.Parser
             });
             def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
             def fnBody = stmt.many().map(stmts => spanned(Expr.Block(stmts), stmts));
-            fnDecl = block(delim("fn"), skipDeclError(id._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((n_rs_r, c) => {
+            fnDecl = block(delim("fn"), skipDeclError(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((n_rs_r, c) => {
                 def n = n_rs_r[0][0];
                 def rs = n_rs_r[0][1];
                 def r = n_rs_r[1];
-                spanned(Decl.Fn((n :> Expr.Id).value, rs, r, c), [n, c])
+                spanned(Decl.Fn(n.value, rs, r, c), [n.span, c.span])
             }))).map((a, b) => spanned(b, [a]));
             
             def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {

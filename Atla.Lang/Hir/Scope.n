@@ -32,6 +32,9 @@ namespace Atla.Lang.Hir
             typeTable.Add(unitTypeName, Type.Native(typeof(void)));
             typeTable.Add(intTypeName, Type.Native(typeof(int)));
             typeTable.Add(stringTypeName, Type.Native(typeof(string)));
+            
+            def tint = Type.Native(typeof(int));
+            varTable.Add("+", [Type.Var(Type.Fn([tint, tint], tint))].ToList());
         }
         
         // TODO 経路圧縮

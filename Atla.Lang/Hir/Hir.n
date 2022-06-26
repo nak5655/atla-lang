@@ -52,15 +52,31 @@ namespace Atla.Lang.Hir
         public this(name: string) {
             this.name = name;
         }
+        
+        public override ToString(): string {
+            $"$name: $typeHint"
+        }
     }
     
     public variant Expr: HasSpan[Expr] {
-        | Unit
+        | Unit {
+            public override ToString(): string {
+                "Unit"
+            }
+        }
         | Int {
             public value: int;
+            
+            public override ToString(): string {
+                $"Int($value)"
+            }
         }
         | String {
             public value: string;
+            
+            public override ToString(): string {
+                $"String($value)"
+            }
         }
         | Block {
             public scope: Scope;
@@ -69,6 +85,11 @@ namespace Atla.Lang.Hir
             public this(parentScope: Scope) {
                 this.scope = Scope(parentScope);
             } 
+            
+            public override ToString(): string {
+                def stmtsStr = Misc.joinToString("; ", stmts);
+                $"{ $stmtsStr }"
+            }
         }
         | Fn {
             public args: list[FnArg];
@@ -80,10 +101,36 @@ namespace Atla.Lang.Hir
                 // TODO ブロックスコープで引数を宣言
                 this.scope = Scope(parentScope);
             }
+            
+            public override ToString(): string {
+                def argsStr = Misc.joinToString(", ", args);
+                $"Fn($argsStr) { $body }"
+            }
         }
-        | Id { name: string }
-        | Member { expr: Expr; name: string }
-        | Apply { fn: Expr; args: list[Expr] }
+        | Id {
+            public name: string;
+            
+            public override ToString(): string {
+                $"Id($name)"
+            }
+        }
+        | Member {
+            public expr: Expr;
+            public name: string;
+            
+            public override ToString(): string {
+                $"($expr).$name"
+            }
+        }
+        | Apply {
+            public fn: Expr;
+            public args: list[Expr];
+            
+            public override ToString(): string {
+                def argsStr = Misc.joinToString(", ", args);
+                $"Apply($fn, $argsStr)"
+            }
+        }
         
         public mutable typeHint: Hir.TypeHint = Hir.TypeHint.Any();
         public mutable type: Hir.Type.Var = Type.Var();
