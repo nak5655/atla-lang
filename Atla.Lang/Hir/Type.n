@@ -15,7 +15,7 @@ using Atla.Lang;
 namespace Atla.Lang.Hir
 {
     public variant TypeHint: HasSpan[TypeHint] {
-        | Any
+        | None
         | Name {
             name: string;
             
@@ -42,7 +42,7 @@ namespace Atla.Lang.Hir
         | Generics { _base: TypeHint; _params: list[TypeHint] }
         
         public resolve(scope: Scope): Type { match (this) {
-            | Hir.TypeHint.Any => Type.Any()
+            | Hir.TypeHint.None => Type.Unknown()
             | Hir.TypeHint.Name(name) => scope.resolveType(name)
             | Hir.TypeHint.Fn(args, ret) => Type.Fn(args.Map(arg => arg.resolve(scope)), ret.resolve(scope))
             | Hir.TypeHint.Generics(_base, _params) => Type.Generics(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
@@ -50,16 +50,16 @@ namespace Atla.Lang.Hir
     }
     
     public variant Type {
-        | Any {
+        | Unknown {
             public override ToString(): string {
-                "Any"
+                "Unknown"
             }
         }
         | Var {
             public mutable instance: Type;
             
             public this() {
-                instance = Any();
+                instance = Unknown();
             }
             
             // VarがVarを参照する場合、途中の参照は無意味なので経路圧縮する
@@ -124,44 +124,54 @@ namespace Atla.Lang.Hir
         
         public errors: List[Hir.Error] = List();
         
-        // thisがotherの特化であるならtrue
-        public canSpecialize(other: Type): bool {
+        public canUnify(other: Type): bool {
             def op = other.resolved(); // ここでotherを解決する(最初だけ)
-            _canSpecialize(op) // 再帰で処理
+            _canUnify(op) // 再帰で処理
         }
         // 再帰用
-        _canSpecialize(other: Type): bool {
+        _canUnify(other: Type): bool {
             match ((this, other)) {
-                | (Any, _) => true
+                | (Unknown, _) => true
+                | (_, Unknown) => true
                 | (e is Error, _) => false
                 | (_, e is Error) => false
-                | (Var(t), _) => t._canSpecialize(other)
-                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x._canSpecialize(y)) && b._canSpecialize(d)
+                | (Var(t), _) => t._canUnify(other)
+                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x._canUnify(y)) && b._canUnify(d)
                 | (Native(a), Native(b)) when a.Equals(b) => true // TODO ネイティブの継承を考慮する
                 // TODO
                 | _ => false
             }
         }
         
-        public specialize(other: Type): Type {
+        public unify(other: Type): Type {
+            when (this == other) {
+                return this;
+            }
+            
             match ((this, other)) {
-                | (Any, _) => other
+                | (Unknown, _) => other
+                | (_, Unknown) => this
                 | (e is Error, _) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(this, other)])
                 | (_, e is Error) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(other, this)])
                 | (it is Var, _) => {
-                    it.instance = it.instance.specialize(other);
+                    if (!it.occursIn(other)) {
+                        it.instance = it.instance.unify(other);
+                    } else {
+                        it.instance = Type.Error(Error.TypeRecursiveReference(this, other));
+                    }
                     it.simplify()
                 }
-                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.specialize(y)), b.specialize(d))
+                | (_, it is Var) => {
+                    it.instance = it.instance.unify(this); // thisが型変数じゃないのでotherをunifyして返す
+                    it.simplify()
+                }
+                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.unify(y)), b.unify(d))
                 | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
                 // TODO
-                | _ => Type.Error(Hir.Error.TypeUnificationFailure(this, other))
+                | _ => {
+                    Type.Error(Hir.Error.TypeUnificationFailure(this, other))
+                }
             }
-        }
-        
-        public generalize(other: Type): void {
-            // TODO
-            specialize(other)
         }
         
         // thisは変更しないで型変数を可能な限り取り除く

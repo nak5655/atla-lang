@@ -46,7 +46,7 @@ namespace Atla.Lang.Hir
     
     public class FnArg: HasSpan[FnArg] {
         public name: string;
-        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.Any();
+        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.None();
         public mutable type: Hir.Type = Type.Var();
         
         public this(name: string) {
@@ -132,7 +132,7 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.Any();
+        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.None();
         public mutable type: Hir.Type.Var = Type.Var();
         public mutable errors: List[Hir.Error] = List();
         

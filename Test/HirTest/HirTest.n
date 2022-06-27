@@ -33,7 +33,7 @@ namespace Test.HirTest
                 TypeHint.Name(Scope.intTypeName),
                 TypeHint.Name(Scope.intTypeName),
             ], TypeHint.Name(Scope.stringTypeName));
-            Typing().typing(globalScope, func, Type.Any());
+            Typing().typing(globalScope, func, Type.Unknown());
             
             Assert.IsInstanceOf(typeof(Type.Fn), func.type.resolved());
             Assert.IsInstanceOf(typeof(Type.Native), func.type.resolved());
@@ -51,7 +51,7 @@ namespace Test.HirTest
                 Stmt.Assign("c", Expr.Id("b")),
                 Stmt.Return(Expr.Id("c"))
             ]);
-            Typing().typing(globalScope, block, Type.Any());
+            Typing().typing(globalScope, block, Type.Unknown());
             
             Assert.IsInstanceOf(typeof(Type.Native), block.type.resolved());
         }
@@ -62,9 +62,10 @@ namespace Test.HirTest
             def mainFn = Expr.Fn(mod.scope, ["a"]);
             def mainFnBody = Expr.Block(mainFn.scope);
             mainFnBody.stmts.AddRange([
-                Stmt.Let("b", Expr.Id("a")),
-                Stmt.Assign("b", Expr.Int(1)),
-                Stmt.Return(Expr.Id("b"))
+                Stmt.Return(Expr.Apply(Expr.Id("+"), [
+                    Expr.Id("a"),
+                    Expr.Int(1)
+                ]))
             ]);
             mainFn.body = mainFnBody;
             mod.declareFn("main", mainFn);

@@ -31,48 +31,65 @@ namespace Atla.Lang.Hir
             // next, analyze the type hints.
             foreach ((_, member) in hir.members.KeyValuePairs) {
                 foreach (overload in member) {
-                    typing(hir.scope, overload, Type.Any());
+                    typing(hir.scope, overload, Type.Unknown());
                 }
             }
         }
         
         // トップダウンで型を構築してボトムアップで型推論
         public typing(scope: Scope, hir: Hir.Expr, expected: Type): void {
-            hir.type.specialize(hir.typeHint.resolve(scope));
+            hir.type.unify(hir.typeHint.resolve(scope));
             
             match (hir) {
-                | Unit => hir.type.specialize(scope.globalScope().resolveType(Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
-                | Int => hir.type.specialize(scope.globalScope().resolveType(Scope.intTypeName))
-                | String => hir.type.specialize(scope.globalScope().resolveType(Scope.stringTypeName))
+                | Unit => hir.type.unify(scope.globalScope().resolveType(Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
+                | Int => hir.type.unify(scope.globalScope().resolveType(Scope.intTypeName))
+                | String => hir.type.unify(scope.globalScope().resolveType(Scope.stringTypeName))
                 | Block(blockScope, stmts) => {
                     foreach (stmt in stmts) {
                         typing(blockScope, stmt);
                     }
                     
                     // スコープの返り値で推論
-                    hir.type.generalize(blockScope.retType);
+                    hir.type.unify(blockScope.retType);
                 }
                 | Fn(args, body, bodyScope) => {
-                    def argTypes = args.Map(arg => arg.typeHint.resolve(scope));
-                    typing(bodyScope, body, Type.Any());
+                    def argTypes = args.Map(arg => Type.Var(arg.typeHint.resolve(scope)));
+                    // 引数を関数本体で宣言
+                    foreach ((arg, t) in args.Zip(argTypes)) {
+                        bodyScope.declareVar(arg.name, t);
+                    }
+                    typing(bodyScope, body, Type.Unknown());
                     
-                    hir.type.generalize(Type.Fn(argTypes, body.type));
+                    hir.type.unify(Type.Fn(argTypes.Map(_ : Type), body.type));
                 }
                 | Id(name) => {
-                    hir.type.specialize(scope.resolveVar(name, expected));
+                    def var = scope.resolveVar(name, expected);
+                    var.unify(expected);
+                    hir.type.unify(var);
                 }
-                | Member(expr, name) => typing(scope, expr, Type.Any())
+                | Member(expr, name) => typing(scope, expr, Type.Unknown())
                 | Apply(fn, args) => {
+                    // 先に関数を解決してみる
+                    typing(scope, fn, Type.Unknown());
+                    
+                    // 関数の型をもとに引数の型を推論
                     def argTypes = match (fn.type.unVar()) {
                         | Type.Fn(ts, _) when args.Length == ts.Length => ts
-                        | _ => args.Map(_ => Type.Any())
+                        | _ => args.Map(_ => Type.Unknown())
                     }
                     foreach ((arg, t) in args.Zip(argTypes)) {
                         typing(scope, arg, t);
                     }
                     
+                    // 引数の型をもとに関数の型を解決
                     def fnType = Type.Fn(args.Map(_.type), expected);
                     typing(scope, fn, fnType);
+                    
+                    // 返り値の型で型推論
+                    match (fn.type.unVar()) {
+                        | Fn(_, ret) => hir.type.unify(ret)
+                        | _ => {}
+                    }
                 }
             }
         }
@@ -81,19 +98,19 @@ namespace Atla.Lang.Hir
         public typing(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
                 | Hir.Stmt.Let(name, rhs) => {
-                    typing(scope, rhs, Type.Any()); // TODO type hint
+                    typing(scope, rhs, Type.Unknown()); // TODO type hint
                     scope.declareVar(name, rhs.type); // 右辺を処理してから変数宣言
                 }
                 | Hir.Stmt.Assign(name, rhs) => {
-                    typing(scope, rhs, Type.Any());
+                    typing(scope, rhs, Type.Unknown());
                     // 右辺から左辺の型を推論
-                    def destType = scope.resolveVar(name, Type.Any());
-                    _ = destType.specialize(rhs.type)
+                    def destType = scope.resolveVar(name, Type.Unknown());
+                    _ = destType.unify(rhs.type)
                 }
-                | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Any())
+                | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Unknown())
                 | Hir.Stmt.Return(value) => {
-                    typing(scope, value, Type.Any());
-                    scope.retType.generalize(value.type) // 返り値でスコープの型を推論
+                    typing(scope, value, Type.Unknown());
+                    scope.retType.unify(value.type) // 返り値でスコープの型を推論
                 }
             }
         }

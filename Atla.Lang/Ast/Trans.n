@@ -29,7 +29,7 @@ namespace Atla.Lang.Ast
         }
         
         public trans(typeHint: option[Ast.TypeHint]): Hir.TypeHint {
-            if (typeHint.IsNone) Hir.TypeHint.Any() else trans(typeHint.Value)
+            if (typeHint.IsNone) Hir.TypeHint.None() else trans(typeHint.Value)
                 
         }
         
