@@ -200,8 +200,8 @@ namespace Atla.Lang.Parser
                 def int = satisfy("int", _ is Token.Int).map(t => spanned(Expr.Int((t :> Token.Int).value), [t]));
                 def str = satisfy("string", _ is Token.String).map(t => spanned(Expr.String((t :> Token.String).value), [t]));
                 def paren = delim("(")._andR(expr)._andL(delim(")"));
-                def block = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => spanned(Expr.Block(stmts), stmts)); // TODO: block name
-                def factor = str._or(id)._or(int)._or(paren)._or(block);
+                def blockExpr = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => spanned(Expr.Block(stmts), stmts)); // TODO: block name
+                def factor = str._or(id)._or(int)._or(paren)._or(blockExpr);
             
                 // メンバーアクセス
                 def member = factor._andL(delim("."))._and(tid).map((a, b) => spanned(Expr.Member(a, b.value), [a.span, b.span]));
@@ -262,7 +262,7 @@ namespace Atla.Lang.Parser
                 def rs = n_rs_r[0][1];
                 def r = n_rs_r[1];
                 spanned(Decl.Fn(n.value, rs, r, c), [n.span, c.span])
-            }))).map((a, b) => spanned(b, [a]));
+            })._andL(eoi()))).map((a, b) => spanned(b, [a]));
             
             def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
                 def (s, t) = s_t: Token.Id * Ast.TypeHint;
@@ -281,23 +281,23 @@ namespace Atla.Lang.Parser
             def classItem = classValField._or(classVarField)._or(classMethod);
             classDecl = block(delim("class"), skipDeclError(tid._and(classItem.many()).map((a, items) => {
                 spanned(Decl.Class(a.value, items), a.span :: items.Map(i => i.span).LastN(1))
-            }))).map((a, b) => spanned(b, [a]));
+            })._andL(eoi()))).map((a, b) => spanned(b, [a]));
             
-            importDecl = delim("import")._and(skipDeclError(
+            importDecl = block(delim("import"), skipDeclError(
                 tid._and(delim(".")._andR(tid).many()).map((x, xs) => {
                     def path = x.value :: xs.Map(t => t.value);
                     if (xs.Length > 1)
                         spanned(Decl.Import(path), (x :: xs.LastN(1)).Map(t => t))
                     else
                         spanned(Decl.Import(path), [x])
-                })
+                })._andL(eoi())
             )).map((a, b) => spanned(b, [a]));
             
             decl.impl = importDecl._or(classDecl)._or(fnDecl);
             
             mod = decl.many().map(ds => {
                 spanned(Ast.Module(ds), ds)
-            });
+            })._andL(eoi());
         }
         
         delim(s: string): Parser[Token, Token] {

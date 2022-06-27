@@ -60,6 +60,32 @@ namespace Test.ParserTest
         }
         
         [Test]
+        public EasyParseFailSafeTest(): void {
+            def lexer = Lexer();
+            def cases = [
+                "import a.",
+                "import a.\nfn a (b: int): Int = b",
+            ];
+            foreach (case in cases) {
+                match (lexer.tokenize(case)) {
+                    | Result.Success(tokens, _) => {
+                        match (Parser().mod.parse(TokenInput(tokens, 0))) {
+                            | Result.Success(result, input) => {
+                                def next = input.get();
+                                when (next.IsSome)
+                                    throw System.Exception($"$next should be None.")
+                            }
+                            | Result.Failure(reason, failAt) => {
+                                throw System.Exception($"$(failAt) : $(reason)")
+                            }
+                        }
+                    }
+                    | _ => throw System.Exception("failed to tokenize.")
+                }
+            }
+        }
+        
+        [Test]
         public EasyTest(): void {
             def code = readCase("easy.atla");
             
