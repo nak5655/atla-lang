@@ -14,6 +14,13 @@ namespace Atla.Lang.Parse
     {
         | Success { result: A; next: Input[I] }
         | Failure { reason: string; failAt: Input[I] }
+
+        public getResult(): option[A] {
+            match (this) {
+                | Success(r, _) => Some(r)
+                | _ => None()
+            }
+        }
         
         public static expectedButGot(expected: string, got: I, input: Input[I]): Failure {
             Failure($"expected $expected, but got $got.", input)

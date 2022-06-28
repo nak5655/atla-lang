@@ -15,7 +15,7 @@ namespace Atla.Lang.Ast
     // 脱糖
     // タイプヒントは明示された分だけ
     // スコープは作るけど操作は無し
-    class Trans
+    public class Trans
     {
         public trans(typeHint: Ast.TypeHint): Hir.TypeHint {
             def hint = match (typeHint) {
@@ -88,6 +88,7 @@ namespace Atla.Lang.Ast
                     mod.declareFn(name, fn);
                     fn.body = trans(fn.scope, body); // 関数宣言でスコープを作ってから本体を定義
                 }
+                | Ast.Decl.Error => {}
             }
         }
         

@@ -18,10 +18,6 @@ namespace Test.ParserTest
     [TestFixture]
     class ParserTest
     {
-        readCase(fileName: string): string {
-            File.ReadAllText(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"cases\\$(fileName)"))
-        }
-        
         [Test]
         public EasyTokenizeTest(): void {
             def lexer = Lexer();
@@ -87,7 +83,7 @@ namespace Test.ParserTest
         
         [Test]
         public EasyTest(): void {
-            def code = readCase("easy.atla");
+            def code = Misc.readCase("easy.atla");
             
             def lexer = Lexer();
             match (lexer.tokenize(code)) {

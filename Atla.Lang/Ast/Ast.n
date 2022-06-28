@@ -57,10 +57,22 @@ namespace Atla.Lang.Ast
         | Fn { name: string; args: list[FnArg]; ret: TypeHint; body: Ast.Expr }
         | Import { path: list[string] }
         | Error { reason: string }
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            match (this) {
+                | Error(s) => [(s, this.span.Value)]
+                // TODO
+                | _ => []
+            }
+        }
     }
     
     [Record]
     public class Module: HasSpan[Module] {
         public decls: list[Decl];
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            decls.SelectMany(_.scanErrors())
+        }
     }
 }

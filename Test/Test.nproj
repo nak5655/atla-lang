@@ -68,6 +68,12 @@
     </MacroReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AstTest\Ast.Test.n">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Misc.n">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="CirTest\CirTest.n">
       <SubType>Code</SubType>
     </Compile>
@@ -87,6 +93,7 @@
     <Folder Include="HirTest\" />
     <Folder Include="MirTest\" />
     <Folder Include="cases" />
+    <Folder Include="AstTest" />
     <Folder Include="ParserTest\" />
     <Folder Include="Properties\" />
   </ItemGroup>
