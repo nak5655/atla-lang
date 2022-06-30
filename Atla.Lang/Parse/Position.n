@@ -15,9 +15,10 @@ namespace Atla.Lang.Parse
         public lines: list[string];
         public line: int;
         public col: int;
+        public index: int;
         
         public override GetHashCode() : int {
-            col + (line * 80) + lines.GetHashCode()
+            index + lines.GetHashCode()
         }
         
         public override Equals(other: object): bool implements System.IEquatable[Position].Equals {
@@ -35,7 +36,7 @@ namespace Atla.Lang.Parse
         
         public CompareTo(other: Position): int {
             match (other) {
-                | Position(_, line, col) => if (this.line != line) this.line.CompareTo(line) else this.col.CompareTo(col)
+                | Position(_, _, _, index) => this.index.CompareTo(index)
                 | _ => 1
             }
         }

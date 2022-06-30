@@ -58,7 +58,7 @@ namespace Atla.Lang.Hir
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {
-            type.errors.Select(e => (e, span.Value))
+            type.errors.Select(e => (e, span))
         }
     }
     
@@ -150,7 +150,7 @@ namespace Atla.Lang.Hir
                 | Member(e, _) => e.scanErrors()
                 | Apply(fn, args) => fn.scanErrors().Concat(args.SelectMany(_.scanErrors()))
             }
-            es.Concat(type.errors.Select(e => (e, span.Value)))
+            es.Concat(type.errors.Select(e => (e, span)))
         }
     }
     

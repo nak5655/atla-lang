@@ -15,6 +15,10 @@ namespace Atla.Lang.Parse
         public lo: Position;
         public hi: Position;
         
+        public length(): int {
+            hi.index - lo.index
+        }
+        
         public static @+(a: Span, b: Span): Span {
             def lo = if (a.lo.CompareTo(b.lo) < 0) a.lo else b.lo;
             def hi = if (a.hi.CompareTo(b.hi) > 0) a.hi else b.hi;
@@ -24,26 +28,27 @@ namespace Atla.Lang.Parse
         public override ToString(): string {
             $"Span($lo, $hi)"
         }
+        
+        public static zero(): Span {
+            Span(Position([], 0, 0, 0), Position([], 0, 0, 0))
+        }
     }
     
     public class HasSpan[T] where T: HasSpan[T] {
-        public mutable span: option[Span] = None();
+        public mutable span: Span = Span.zero();
         
         public addSpan(other: Span): T {
-            match (span) {
-                | Some(s) => span = Some(s + other)
-                | _ => span = Some(other)
-            }
+            if (span == null || span.length() == 0)
+                span = other
+            else if (other == null || other.length() == 0)
+                ()
+            else
+                span = span + other;
             
             this :> T
         }
-        public addSpan(other: option[Span]): T {
-            match (other) {
-                | Some(s) => addSpan(s)
-                | _ => this :> T
-            }
-        }
-        public addSpan(others: list[option[Span]]): T {
+        
+        public addSpan(others: list[Span]): T {
             foreach (other in others) {
                 _ = addSpan(other)
             }

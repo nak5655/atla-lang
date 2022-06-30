@@ -60,7 +60,7 @@ namespace Atla.Lang.Ast
         
         public scanErrors(): IEnumerable[(string * Span)] {
             match (this) {
-                | Error(s) => [(s, this.span.Value)]
+                | Error(s) => [(s, this.span)]
                 // TODO
                 | _ => []
             }

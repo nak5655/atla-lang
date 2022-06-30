@@ -30,10 +30,14 @@ namespace Atla.Lang.Parser
                 None()
         }
         
-        public position(): option[Span] {
+        public position(): Span {
             match (get()) {
                 | Some(t) => t.span
-                | _ => None()
+                | _ when index >= data.Length && data.Length > 0 => {
+                    def p = data.Last().span.hi;
+                    Span(p, Position(p.lines, p.line, p.col + 1, p.index + 1)) // end of data
+                }
+                | _ => Span.zero()
             }
         }
         
@@ -50,23 +54,20 @@ namespace Atla.Lang.Parser
         public this(parent: Input[Token], openBy: Token) {
             this.parent = parent;
             this.openBy = openBy;
-            this.openAt = openBy.span.Value.lo;
+            this.openAt = openBy.span.lo;
         }
         
         public get(): option[Token] {
             match (parent.get()) {
                 | Some(t) => {
-                    match (t.span) {
-                        | Some(s) => if (s.lo.col <= openAt.col) None() else Some(t)
-                        | _ => None()
-                    }
+                    if (t.span.lo.col <= openAt.col) None() else Some(t)
                 }
                 | _ => None()
             }
         }
         
-        public position(): option[Span] {
-            parent.position() :> option[Span]
+        public position(): Span {
+            parent.position() :> Span
         }
         
         public next(): Input[Token] {
@@ -82,16 +83,13 @@ namespace Atla.Lang.Parser
         public this(parent: Input[Token], openBy: Token) {
             this.parent = parent;
             this.openBy = openBy;
-            this.openAt = openBy.span.Value.lo;
+            this.openAt = openBy.span.lo;
         }
         
         public get(): option[Token] {
             match (parent.get()) {
                 | Some(t) => {
-                    match (t.span) {
-                        | Some(s) => if (s.lo.line == openAt.line && s.hi.line == openAt.line) Some(t) else None()
-                        | _ => None()
-                    }
+                    if (t.span.lo.line == openAt.line && t.span.hi.line == openAt.line) Some(t) else None()
                 }
                 | _ => None()
             }
@@ -155,14 +153,11 @@ namespace Atla.Lang.Parser
     
     public class Parser: OffsideParserEnv
     {
-        spanned[T](ast: T, spans: list[option[Span]]): T where T: HasSpan[T] {
-            when (spans.All(_.IsNone))
-                return ast;
-            def ss = spans.Filter(s => s != null && s.IsSome).Map(s => s.Value);
-            when (!ss.IsEmpty()) {
-                _ = ast.addSpan(ss.Tail.FoldRight(ss.Head, (a, b) => a + b));
-            }
-            ast
+        spanned[T](ast: T, spans: list[Span]): T where T: HasSpan[T] {
+            if (spans.IsEmpty)
+                ast
+            else
+                ast.addSpan(spans.Tail.FoldRight(spans.Head, (a, b) => a + b))
         }
         spanned[T](ast: T, tokens: list[Token]): T where T: HasSpan[T] {
             spanned(ast, tokens.Map(t => t.span))
@@ -313,7 +308,7 @@ namespace Atla.Lang.Parser
             p.skipFail(ret => {
                 def failure = ret :> Result[Token, Decl].Failure; // always it is failure
                 def ret = Decl.Error(failure.reason);
-                ret.span = failure.failAt.position() :> option[Span];
+                ret.span = failure.failAt.position() :> Span;
                 ret
             })
         }
@@ -322,7 +317,7 @@ namespace Atla.Lang.Parser
             p.skipFail(ret => {
                 def failure = ret :> Result[Token, ClassItem].Failure; // always it is failure
                 def ret = ClassItem.Error(failure.reason);
-                ret.span = failure.failAt.position() :> option[Span];
+                ret.span = failure.failAt.position() :> Span;
                 ret
             })
         }

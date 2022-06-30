@@ -61,6 +61,7 @@ namespace Test.ParserTest
             def cases = [
                 "import a.",
                 "import a.\nfn a (b: int): Int = b",
+                "import a.a\nfn a (b: int): Int =",
             ];
             foreach (case in cases) {
                 match (lexer.tokenize(case)) {
