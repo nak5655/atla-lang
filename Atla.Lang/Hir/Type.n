@@ -196,5 +196,15 @@ namespace Atla.Lang.Hir
                 | _ => false
             }
         }
+        
+        public scanErrors(): IEnumerable[Hir.Error] {
+            def ret = match (this) {
+                | Var(t) => t.scanErrors()
+                | Fn(args, ret) => args.SelectMany(_.scanErrors()).Concat(ret.scanErrors())
+                | Generics(b, ps) => ps.SelectMany(_.scanErrors()).Concat(b.scanErrors())
+                | _ => []
+            };
+            ret.Concat(errors)
+        }
     }
 }

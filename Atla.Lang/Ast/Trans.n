@@ -61,9 +61,7 @@ namespace Atla.Lang.Ast
                 }
                 | Ast.Expr.Fn(args, body) => {
                     def fn = Hir.Expr.Fn(scope, args.Map(_.name));
-                    foreach ((a, h) in args.Zip(fn.args)) {
-                        h.typeHint = trans(a.typeHint);
-                    }
+                    fn.typeHint = Hir.TypeHint.Fn(args.Map(arg => trans(arg.typeHint)), trans(body.typeHint));
                     fn.body = trans(fn.scope, body);
                     fn
                 }
@@ -83,6 +81,7 @@ namespace Atla.Lang.Ast
                     _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
                     
                     def fn = Hir.Expr.Fn(mod.scope, args.Map(_.name));
+                    _ = fn.addSpan(ast.span);
                     fn.typeHint = fnType;
                     
                     mod.declareFn(name, fn);

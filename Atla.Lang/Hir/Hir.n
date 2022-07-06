@@ -19,11 +19,28 @@ namespace Atla.Lang.Hir
 {
     public variant Error {
         | DuplicatedDeclaration { name: string; type: Type; already: Type }
-        | TypeUnificationFailure { refered: Type; referer: Type }
+        | TypeUnificationFailure {
+            refered: Type; referer: Type;
+            
+            public override ToString(): string {
+                $"Could not unify type $refered and $referer."
+            }
+        }
         | TypeRecursiveReference { a: Type; b: Type }
-        | UndefinedReference { name: string; type: Type }
-        | UndefinedType { name: string }
-        | TypeInferenceFailure
+        | UndefinedReference {
+            name: string; type: Type;
+            
+            public override ToString(): string {
+                $"Undefined variable. $name: $type"
+            }
+        }
+        | UndefinedType {
+            name: string;
+            
+            public override ToString(): string {
+                $"$name type is not defined."
+            }
+        }
         | AmbiguousType { types: list[Type] }
         | TypeInferenceUnmatched { types: list[Type] }
     }
@@ -46,19 +63,13 @@ namespace Atla.Lang.Hir
     
     public class FnArg: HasSpan[FnArg] {
         public name: string;
-        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.None();
-        public mutable type: Hir.Type = Type.Var();
         
         public this(name: string) {
             this.name = name;
         }
         
         public override ToString(): string {
-            $"$name: $typeHint"
-        }
-        
-        public scanErrors(): IEnumerable[(Error * Span)] {
-            type.errors.Select(e => (e, span))
+            $"$name"
         }
     }
     
@@ -91,8 +102,8 @@ namespace Atla.Lang.Hir
             } 
             
             public override ToString(): string {
-                def stmtsStr = Misc.joinToString("; ", stmts);
-                $"{ $stmtsStr }"
+                def stmtsStr = Misc.joinToString(", ", stmts);
+                $"Block($stmtsStr)"
             }
         }
         | Fn {
@@ -123,7 +134,7 @@ namespace Atla.Lang.Hir
             public name: string;
             
             public override ToString(): string {
-                $"($expr).$name"
+                $"Member($expr, $name)"
             }
         }
         | Apply {
@@ -139,18 +150,19 @@ namespace Atla.Lang.Hir
         public mutable typeHint: Hir.TypeHint = Hir.TypeHint.None();
         public mutable type: Hir.Type.Var = Type.Var();
         
+        // TODO Type.Varのエラーが重複する
         public scanErrors(): IEnumerable[(Error * Span)] {
             def es = match (this) {
                 | Unit => []
                 | Int => []
                 | String => []
                 | Block(_, ss) => ss.SelectMany(_.scanErrors())
-                | Fn(args, body, _) => args.SelectMany(_.scanErrors()).Concat(body.scanErrors())
+                | Fn(args, body, _) => body.scanErrors()
                 | Id => []
                 | Member(e, _) => e.scanErrors()
                 | Apply(fn, args) => fn.scanErrors().Concat(args.SelectMany(_.scanErrors()))
             }
-            es.Concat(type.errors.Select(e => (e, span)))
+            es.Concat(type.scanErrors().Select(e => (e, span)))
         }
     }
     

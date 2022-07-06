@@ -13,7 +13,7 @@ namespace Atla.Lang.Hir
     // a.k.a SymbolTable or Environment
     public class Scope {
         parent: option[Scope] = None();
-        varTable: Hashtable[string, List[Type.Var]] = Hashtable();
+        varTable: Hashtable[string, List[Type]] = Hashtable();
         typeTable: Hashtable[string, Type] = Hashtable();
         implTable: Hashtable[string, Impl] = Hashtable();
         public retType: Type = Type.Var();
@@ -59,7 +59,7 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public declareVar(id: string, type: Type.Var): void {
+        public declareVar(id: string, type: Type): void {
             if (varTable.ContainsKey(id)) {
                 def types = varTable.Get(id).Value;
                 types.Add(type);
@@ -69,9 +69,9 @@ namespace Atla.Lang.Hir
         }
         
         // 名前解決での優先順で返す（内側のスコープを優先）
-        public resolveVar(id: string, type: Hir.Type): Hir.Type.Var {
+        public resolveVar(id: string, type: Hir.Type): Hir.Type {
             when (varTable.ContainsKey(id)) {
-                def ts = varTable.Get(id).Value.Filter(t => type.canUnify(t)) : list[Type.Var];
+                def ts = varTable.Get(id).Value.Filter(t => type.canUnify(t)) : list[Type];
                 return if (ts.Length == 0) {
                     match (parent) {
                         | Some(s) => s.resolveVar(id, type)

@@ -39,6 +39,7 @@ namespace Atla.Lang.Hir
         // トップダウンで型を構築してボトムアップで型推論
         public typing(scope: Scope, hir: Hir.Expr, expected: Type): void {
             hir.type.unify(hir.typeHint.resolve(scope));
+            hir.type.unify(expected);
             
             match (hir) {
                 | Unit => hir.type.unify(scope.globalScope().resolveType(Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
@@ -49,18 +50,31 @@ namespace Atla.Lang.Hir
                         typing(blockScope, stmt);
                     }
                     
+                    when (stmts.Count() > 0) {
+                        match (stmts.Last()) {
+                            | Hir.Stmt.Expr(e) => blockScope.retType.unify(e.type)  // ブロックの最後の式は返り値とする
+                            | Hir.Stmt.Return => ()
+                            | _ => blockScope.retType.unify(scope.globalScope().resolveType(Scope.unitTypeName)) // ただの文ならunit型とする
+                        }
+                    }
+                    
+                    
                     // スコープの返り値で推論
                     hir.type.unify(blockScope.retType);
                 }
                 | Fn(args, body, bodyScope) => {
-                    def argTypes = args.Map(arg => Type.Var(arg.typeHint.resolve(scope)));
+                    def fnType: Type.Fn = match (hir.type.unVar()) {
+                        | it is Type.Fn => it
+                        | _ => Type.Fn(args.Map(_ => Type.Var()), Type.Var())
+                    }
                     // 引数を関数本体で宣言
-                    foreach ((arg, t) in args.Zip(argTypes)) {
+                    foreach ((arg, t) in args.Zip(fnType.args)) {
                         bodyScope.declareVar(arg.name, t);
                     }
-                    typing(bodyScope, body, Type.Unknown());
+                    bodyScope.retType.unify(fnType.ret);
+                    typing(bodyScope, body, fnType.ret);
                     
-                    hir.type.unify(Type.Fn(argTypes.Map(_ : Type), body.type));
+                    hir.type.unify(fnType);
                 }
                 | Id(name) => {
                     def var = scope.resolveVar(name, expected);
