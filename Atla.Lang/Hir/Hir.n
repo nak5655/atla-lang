@@ -137,6 +137,14 @@ namespace Atla.Lang.Hir
                 $"Member($expr, $name)"
             }
         }
+        | StaticMember {
+            public clsName: string;
+            public name: string;
+            
+            public override ToString(): string {
+                $"StaticMember(clsName, $name)"
+            }
+        }
         | Apply {
             public fn: Expr;
             public args: list[Expr];
@@ -160,6 +168,7 @@ namespace Atla.Lang.Hir
                 | Fn(args, body, _) => body.scanErrors()
                 | Id => []
                 | Member(e, _) => e.scanErrors()
+                | StaticMember => []
                 | Apply(fn, args) => fn.scanErrors().Concat(args.SelectMany(_.scanErrors()))
             }
             es.Concat(type.scanErrors().Select(e => (e, span)))

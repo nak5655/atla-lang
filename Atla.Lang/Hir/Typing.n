@@ -18,8 +18,11 @@ namespace Atla.Lang.Hir
         public typing(hir: Hir.Module): void {
             foreach (import in hir.imports) {
                 // TODO: import atla module (non Native)
-                hir.scope.declareType(import.dotted(), Hir.Type.Native(System.Type.GetType(import.dotted())))
-                // TODO: short name (e.g. System.Type as Type)
+                def type = Hir.Type.Native(System.Type.GetType(import.dotted()));
+                // declare short name (e.g. "System.String" is declared as "String")
+                when (!import.path.IsEmpty()) {
+                    hir.scope.declareType(import.path.Last(), type);
+                }
             }
             
             // first, declare members
@@ -81,29 +84,51 @@ namespace Atla.Lang.Hir
                     var.unify(expected);
                     hir.type.unify(var);
                 }
-                | Member(expr, name) => typing(scope, expr, Type.Unknown())
+                | Member(expr, name) => {
+                    typing(scope, expr, Type.Unknown())
+                }
+                | StaticMember(tyName, name) => {
+                    mutable ty = scope.resolveType(tyName);
+                    match (ty.resolved()) {
+                        | Type.Class(_, staticMembers) => {
+                            def es = staticMembers.Get(name).Value.Filter(e => e.type.canUnify(hir.type));
+                            if (es.Length == 1) {
+                                _ = hir.type.unify(es.First().type)
+                            } else if (es.IsEmpty()) {
+                                hir.type.errors.Add(Hir.Error.UndefinedReference($"$tyName::$name", hir.type))
+                            } else {
+                                hir.type.errors.Add(Hir.Error.AmbiguousType(es.Map(_.type)))
+                            }
+                        }
+                        | Type.Native(nt) => {
+                            def overloads = nt.GetMethods().Filter(methodInfo => {
+                                if (methodInfo.Name == name) {
+                                    match (hir.type.resolved()) {
+                                        | it is Type.Fn => it.canUnify(Type.Fn.from(methodInfo))
+                                        | _ => true
+                                    }
+                                } else {
+                                    false
+                                }
+                            });
+                            if (overloads.Length == 1) {
+                                _ = hir.type.unify(Type.Fn.from(overloads.First()))
+                            } else if (overloads.Length > 1) {
+                                hir.type.errors.Add(Hir.Error.AmbiguousType(overloads.Map(m => Type.Fn.from(m))))
+                            } else {
+                                hir.type.errors.Add(Hir.Error.UndefinedReference($"$tyName::$name", hir.type))
+                            }
+                        }
+                        | _ => hir.type.errors.Add(Hir.Error.UndefinedType(tyName))
+                    }
+                }
                 | Apply(fn, args) => {
-                    // 先に関数を解決してみる
-                    typing(scope, fn, Type.Unknown());
-                    
-                    // 関数の型をもとに引数の型を推論
-                    def argTypes = match (fn.type.unVar()) {
-                        | Type.Fn(ts, _) when args.Length == ts.Length => ts
-                        | _ => args.Map(_ => Type.Unknown())
+                    // 関数の型を特定したいので、先に引数の型を解析
+                    foreach (arg in args) {
+                        typing(scope, arg, Type.Unknown());
                     }
-                    foreach ((arg, t) in args.Zip(argTypes)) {
-                        typing(scope, arg, t);
-                    }
-                    
-                    // 引数の型をもとに関数の型を解決
-                    def fnType = Type.Fn(args.Map(_.type), expected);
-                    typing(scope, fn, fnType);
-                    
-                    // 返り値の型で型推論
-                    match (fn.type.unVar()) {
-                        | Fn(_, ret) => hir.type.unify(ret)
-                        | _ => {}
-                    }
+                    // 関数を解決
+                    typing(scope, fn, Type.Fn(args.Map(_.type), expected));
                 }
             }
         }

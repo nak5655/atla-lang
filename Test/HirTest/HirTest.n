@@ -18,25 +18,17 @@ namespace Test.HirTest
     {
         [Test]
         public EasyTypingTest(): void {
-            def globalScope = Scope();
-            def funcScope = Scope(globalScope);
-            def func = Expr.Fn(
-                [FnArg("a"), FnArg("b")],
-                {
-                    def b = Expr.Block(Scope(funcScope));
-                    b.stmts.Add(Stmt.Return(Expr.String("c")));
-                    b
-                },
-                funcScope
-            );
-            func.typeHint = TypeHint.Fn([
-                TypeHint.Name(Scope.intTypeName),
-                TypeHint.Name(Scope.intTypeName),
-            ], TypeHint.Name(Scope.stringTypeName));
-            Typing().typing(globalScope, func, Type.Unknown());
+            def code = "import System::Console\nfn f (a: String): Unit = Console::WriteLine a";
             
-            Assert.IsInstanceOf(typeof(Type.Fn), func.type.resolved());
-            Assert.IsInstanceOf(typeof(Type.Native), func.type.resolved());
+            def lexer = Atla.Lang.Parser.Lexer();
+            def tokens = lexer.tokenize(code).getResult().Value;
+            def parser = Atla.Lang.Parser.Parser();
+            def ast = parser.mod.parse(Atla.Lang.Parser.TokenInput(tokens, 0)).getResult().Value;
+            def hir = (Atla.Lang.Ast.Trans().trans(ast, "main"));
+            Atla.Lang.Hir.Typing().typing(hir);
+            
+            def errors = hir.scanErrors().Distinct().ToList();
+            Assert.Equals(1, errors.Count());
         }
         
        [Test]

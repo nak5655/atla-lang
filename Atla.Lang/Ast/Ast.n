@@ -34,6 +34,7 @@ namespace Atla.Lang.Ast
         | Block { stmts: list[Stmt] }
         | Fn { args: list[FnArg]; body: Expr }
         | Member { obj: Expr; member: string }
+        | StaticMember { objName: string; member: string }
         | Apply { fn: Expr; args: list[Expr] }
         
         public typeHint: option[TypeHint] = None();

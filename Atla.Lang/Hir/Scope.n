@@ -46,6 +46,7 @@ namespace Atla.Lang.Hir
         }
         
         public declareType(id: string, type: Type): void {
+            // TODO 重複エラー
             typeTable.Add(id, type)
         }
         

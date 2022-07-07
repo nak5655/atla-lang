@@ -67,6 +67,7 @@ namespace Atla.Lang.Ast
                 }
                 | Ast.Expr.Id(value) => Hir.Expr.Id(value)
                 | Ast.Expr.Member(expr, member) => Hir.Expr.Member(trans(scope, expr), member)
+                | Ast.Expr.StaticMember(objName, member) => Hir.Expr.StaticMember(objName, member)
                 | Ast.Expr.Apply(fn, args) => Hir.Expr.Apply(trans(scope, fn), args.Map(e => trans(scope, e)))
             }
             expr.typeHint = trans(ast.typeHint);

@@ -200,7 +200,8 @@ namespace Atla.Lang.Parser
             
                 // メンバーアクセス
                 def member = factor._andL(delim("."))._and(tid).map((a, b) => spanned(Expr.Member(a, b.value), [a.span, b.span]));
-                def term1 = member._or(factor);
+                def staticMember = tid._andL(delim("::"))._and(tid).map((a, b) => spanned(Expr.StaticMember(a.value, b.value), [a.span, b.span]));
+                def term1 = staticMember._or(member)._or(factor);
                 
                 // 呼び出し式
                 def term2 = term1.many1().map(es => {
@@ -279,7 +280,7 @@ namespace Atla.Lang.Parser
             })._andL(eoi()))).map((a, b) => spanned(b, [a]));
             
             importDecl = block(delim("import"), skipDeclError(
-                tid._and(delim(".")._andR(tid).many()).map((x, xs) => {
+                tid._and(delim("::")._andR(tid).many()).map((x, xs) => {
                     def path = x.value :: xs.Map(t => t.value);
                     if (xs.Length > 1)
                         spanned(Decl.Import(path), (x :: xs.LastN(1)).Map(t => t))

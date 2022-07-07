@@ -88,6 +88,7 @@ namespace Atla.Lang.Hir
         }
         | Class {
             public members: Hashtable[string, List[Expr]] = Hashtable();
+            public staticMembers: Hashtable[string, List[Expr]] = Hashtable();
         }
         | Native {
             public type: System.Type;
@@ -109,6 +110,11 @@ namespace Atla.Lang.Hir
             public override ToString(): string {
                 def argsStr = Misc.joinToString(", ", args);
                 $"Fn($argsStr): $ret"
+            }
+            
+            public static from(methodInfo: System.Reflection.MethodInfo): Fn {
+                def pTypes = methodInfo.GetParameters().Map(p => p.ParameterType);
+                Fn(pTypes.Map(t => Type.Native(t)).ToNList(), Type.Native(methodInfo.ReturnType))
             }
         }
         | Generics { _base: Type; _params: list[Type] }
