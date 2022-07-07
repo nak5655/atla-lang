@@ -15,50 +15,22 @@ namespace Atla.Lang.Hir
 {
     public class Trans
     {
-    //    parent: option[Trans];
-    //    mutable varTable: Hashtable[string, Hir.Type]; // TODO: 名前と型ヒントをキーにする
-    //    mutable typeTable: Hashtable[string, Hir.Type];
-        
-    //    public this(parent: option[Trans]) {
-    //        this.parent = parent;
-    //        varTable = Hashtable();
-    //        typeTable = Hashtable();
-    //    }
-        
-    //    public resolveVar(name: string): option[Hir.Type] {
-    //        if (varTable.ContainsKey(name)) {
-    //            varTable.Get(name)
-    //        } else {
-    //            parent.Value.resolveVar(name)
-    //        }
-    //    }
-        
-    //    public trans(hir: Hir.Type): Mir.Type {
-    //        match (hir) {
-    //            | Hir.Type.Unit => Mir.Type.Void()
-    //            | Hir.Type.String => Mir.Type.String()
-    //            | Hir.Type.Fn(args, ret) => Mir.Type.Fn(args.Map(trans), trans(ret))
-    //            | Hir.Type.Var(x) => throw System.Exception($"Type Inference Failure: $x")
-    //        }
-    //    }
-        /*
-        public trans(hir: Hir.Expr): list[Mir.Ins] {
+        public trans(scope: Hir.Scope, hir: Hir.Expr): list[Mir.Ins] {
             match (hir) {
-                | Hir.Expr.Call(fn, args) => {
+                | Hir.Expr.Apply(fn, args) => {
                     // TODO: K正規化
                     mutable mirArgs: list[Mir.Arg] = [];
                     foreach (arg in args) {
                         match (arg) {
                             | Hir.Expr.String(s) => mirArgs += [Mir.Arg.Imm(Mir.Imm.String(s))]
-                            | Hir.Expr.Id(name) => mirArgs += [Mir.Arg.Id(Mir.Id(name, trans(resolveVar(name).Value)))]
+                            | Hir.Expr.Id(name) => mirArgs += [Mir.Arg.Id(Mir.Id(name, arg.type.pruned()))]
                         }
                     }
                     match (fn) {
-                        | Hir.Expr.Id(name) => [Mir.Ins.Call(Mir.Id(name, trans(resolveVar(name).Value)), mirArgs)]
+                        | Hir.Expr.Id(name) => [Mir.Ins.Call(Mir.Id(name, fn.type.pruned()), mirArgs)]
                         // TODO 関数式
                     }
                 }
-                | Hir.Expr.Fn => {}
             }
         }
         
@@ -72,12 +44,11 @@ namespace Atla.Lang.Hir
             //}
         }
         
-        public trans(name: string, hir: Hir.Expr): list[Mir.Decl] {
-            mutable rhs = trans(hir);
+        public trans(scope: Hir.Scope, name: string, hir: Hir.Expr): list[Mir.Decl] {
+            mutable rhs = trans(scope, hir);
             
-            match (hir.type.resolved()) {
-                | Type.Fn => [Mir.Decl.Fn(Mir.Id(name, ), rhs)]
-                
+            match (hir.type.pruned()) {
+                | it is Type.Fn => [Mir.Decl.Fn(Mir.Id(name, it), rhs)]
             }
         }
         
@@ -85,11 +56,11 @@ namespace Atla.Lang.Hir
             mutable decls: list[Mir.Decl] = [];
             foreach ((name, overloads) in hir.members.KeyValuePairs) {
                 foreach (overload in overloads) {
-                    decls += trans(name, overload)
+                    decls += trans(hir.scope, name, overload)
                 }
             }
           
             Mir.Module(hir.name, decls)
-        }*/
+        }
     }
 }

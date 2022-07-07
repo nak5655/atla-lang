@@ -61,7 +61,7 @@ namespace Test.HirTest
             ]);
             Typing().typing(globalScope, block, Type.Unknown());
             
-            Assert.IsInstanceOf(typeof(Type.Native), block.type.resolved());
+            Assert.IsInstanceOf(typeof(Type.Native), block.type.pruned());
         }
         
         [Test]
@@ -79,7 +79,7 @@ namespace Test.HirTest
             mod.declareFn("main", mainFn);
             Typing().typing(mod);
             
-            def fnType = mainFn.type.resolved() :> Type.Fn;
+            def fnType = mainFn.type.pruned() :> Type.Fn;
             Assert.AreEqual(typeof(int), (fnType.args.First() :> Type.Native).type);
             Assert.AreEqual(typeof(int), (fnType.ret :> Type.Native).type);
         }

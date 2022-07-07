@@ -41,6 +41,7 @@ namespace Atla.Lang
     public variant TypeHint: HasSpan[TypeHint] {
         | None
         | Name {
+            // TODO class path
             name: string;
             
             public override ToString(): string {
@@ -156,7 +157,7 @@ namespace Atla.Lang
         public errors: List[TypeError] = List();
         
         public canUnify(other: Type): bool {
-            def op = other.resolved(); // ここでotherを解決する(最初だけ)
+            def op = other.pruned(); // ここでotherを解決する(最初だけ)
             _canUnify(op) // 再帰で処理
         }
         // 再帰用
@@ -207,12 +208,11 @@ namespace Atla.Lang
         }
         
         // thisは変更しないで型変数を可能な限り取り除く
-        // TODO rename to "pruned"
-        public resolved(): Type {
+        public pruned(): Type {
             match (this) {
-                | Var(t) => t.resolved()
-                | Fn(args, ret) => Fn(args.Map(_.resolved()), ret.resolved())
-                | Generics(b, ps) => Generics(b.resolved(), ps.Map(_.resolved()))
+                | Var(t) => t.pruned()
+                | Fn(args, ret) => Fn(args.Map(_.pruned()), ret.pruned())
+                | Generics(b, ps) => Generics(b.pruned(), ps.Map(_.pruned()))
                 | _ => this
             }
         }
@@ -251,6 +251,39 @@ namespace Atla.Lang
                 | _ => []
             };
             ret.Concat(errors)
+        }
+        
+        public ToSystemType(): System.Type {
+            match (this) {
+                // TODO
+                | Native(t) => t
+            }
+        }
+        
+        public override GetHashCode() : int {
+            match (this) {
+                | Unknown => (this: object).GetHashCode()
+                | Var(t) => t.GetHashCode()
+                | Class => (this: object).GetHashCode()
+                | Native(t) => t.GetHashCode()
+                | Fn(args, ret) => args.Sum(_.GetHashCode()) + ret.GetHashCode()
+                | Generics(b, ps) => ps.Sum(_.GetHashCode()) + b.GetHashCode()
+                | Error => (this: object).GetHashCode()
+            }
+        }
+        
+        public override Equals(other: object): bool implements System.IEquatable[Type].Equals {
+            match (this, other) {
+                | (Var(t), _) => t.Equals(other)
+                | (_, Var(s)) => this.Equals(s)
+                | (Unknown, _) => (this: object).Equals(other)
+                | (Class, _) => (this: object).Equals(other)
+                | (Native(t), Native(s)) => t.Equals(s)
+                | (Fn(xs, y), Fn(ts, s)) when xs.Length == ts.Length => xs.Zip(ts).All((x, t) => x.Equals(t)) && y.Equals(s)
+                | (Generics(x, ys), Generics(t, ss)) when ys.Length == ss.Length => ys.Zip(ss).All((x, t) => x.Equals(t)) && x.Equals(t)
+                | (Error, _) => (this: object).Equals(other)
+                | _ => false
+            }
         }
     }
 }

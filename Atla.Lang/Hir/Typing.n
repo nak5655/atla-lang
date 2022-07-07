@@ -91,7 +91,7 @@ namespace Atla.Lang.Hir
                 }
                 | StaticMember(tyName, name) => {
                     mutable ty = scope.resolveType(tyName);
-                    match (ty.resolved()) {
+                    match (ty.pruned()) {
                         | Type.Class(_, staticMembers) => {
                             def es = staticMembers.Get(name).Value.Filter(e => e.canUnify(hir.type));
                             if (es.Length == 1) {
@@ -105,7 +105,7 @@ namespace Atla.Lang.Hir
                         | Type.Native(nt) => {
                             def overloads = nt.GetMethods().Filter(methodInfo => {
                                 if (methodInfo.Name == name) {
-                                    match (hir.type.resolved()) {
+                                    match (hir.type.pruned()) {
                                         | it is Type.Fn => it.canUnify(Type.Fn.from(methodInfo))
                                         | _ => true
                                     }
@@ -133,7 +133,7 @@ namespace Atla.Lang.Hir
                     typing(scope, fn, Type.Fn(args.Map(_.type), expected));
                     
                     // 関数の型から引数と返り値を推論
-                    match (fn.type.resolved()) {
+                    match (fn.type.pruned()) {
                         | Type.Fn(xs, y) when xs.Length == args.Length => {
                             foreach ((arg, x) in args.Zip(xs)) {
                                 arg.type.unify(x)

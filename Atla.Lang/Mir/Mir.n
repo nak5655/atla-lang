@@ -9,7 +9,7 @@ using System.Linq;
 using System.Reflection;
 
 /**
-CPU命令に近い形式 実行速度最適化の対象
+CPU命令に近い形式
 LLVM IR と同等
 型確定済み
 変数名なし　レジスタ割り当て済み
@@ -17,28 +17,6 @@ K正規化済み
 **/
 namespace Atla.Lang.Mir
 {
-    public variant Type: System.IEquatable[Type] {
-        | String
-        | Fn { args: list[Type]; ret: Type }
-        | Void
-        
-        public override GetHashCode() : int {
-            match (this) {
-                | String => 0
-                | Void => 1
-                | Fn(args, ret) => args.Sum(arg => arg.GetHashCode()) + ret.GetHashCode()
-            }
-        }
-        
-        public override Equals(other: object): bool implements System.IEquatable[Type].Equals {
-            match (this) {
-                | String => other is Type.String
-                | Void => other is Type.Void
-                | Fn(args, ret) => other is Type.Fn && (args.Zip((other :> Type.Fn).args).All((a,b) => a.Equals(b))) && ret.Equals((other :> Type.Fn).ret)
-            }
-        }
-    }
-    
     [Record]
     public class Id: System.IComparable[Id], System.IEquatable[Id]
     {

@@ -8,6 +8,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
+using Atla.Lang;
+
 namespace Atla.Lang.Cir
 {
     public variant Symbol: System.IEquatable[Symbol] {
