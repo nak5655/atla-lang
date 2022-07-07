@@ -2,6 +2,7 @@ using Nemerle;
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,13 @@ namespace Atla.Lang.Parse
         }
         
         public static @+(a: Span, b: Span): Span {
+            when (a.length() < 1) {
+                return b;
+            }
+            when (b.length() < 1) {
+                return a;
+            }
+            
             def lo = if (a.lo.CompareTo(b.lo) < 0) a.lo else b.lo;
             def hi = if (a.hi.CompareTo(b.hi) > 0) a.hi else b.hi;
             Span(lo, hi)

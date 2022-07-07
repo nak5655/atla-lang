@@ -18,7 +18,7 @@ namespace Test.HirTest
     {
         [Test]
         public EasyTypingTest(): void {
-            def code = "import System::Console\nfn f (a: String): Unit = Console::WriteLine a";
+            def code = "import System::Array\nimport System::Console\n\nfn main (args: Array String): Unit = Console::WriteLine \"hello\"";
             
             def lexer = Atla.Lang.Parser.Lexer();
             def tokens = lexer.tokenize(code).getResult().Value;

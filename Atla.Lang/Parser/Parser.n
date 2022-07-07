@@ -19,7 +19,7 @@ namespace Atla.Lang.Parser
         index: int;
         
         public this(data: list[Token], index: int) {
-            this.data = data;
+            this.data = data.Filter(t => !(t is Token.Comment)); // remove comments
             this.index = index;
         }
         

@@ -86,6 +86,18 @@ namespace Atla.Lang.Parser
     }
     
     public variant Token: HasSpan[Token] {
+        | Comment {
+            public value: string;
+            
+            public this(value: string, span: Span) {
+                this.value = value;
+                this.span = span;
+            }
+            
+            public override ToString(): string {
+                $"Comment($(value))"
+            }
+        }
         | Id {
             public value: string;
     
@@ -177,6 +189,7 @@ namespace Atla.Lang.Parser
         infixOp5: HashSet[string];
         infixOp6: HashSet[string];
         
+        comment: Parser[SourceChar, Token];
         ws: Parser[SourceChar, SourceChar];
         delim: Parser[SourceChar, Token];
         
@@ -226,6 +239,11 @@ namespace Atla.Lang.Parser
             infixOp6 = HashSet(["*", "/", "%"]);
             def infixOps = HashSet(infixOp3.Concat(infixOp4).Concat(infixOp5).Concat(infixOp6));
         
+            comment = char('#')._and(satisfy("comment", c => c.char != '\n').many()).map((s, cs) => {
+                def content = SourceString(cs);
+                def span = Span(s.pos, Position(s.pos.lines, s.pos.line, s.pos.col + 1, s.pos.index + 1)) + content.span;
+                Token.Comment(content.string, span)
+            });
             ws = satisfy("whitespace", c => " \n\r\t".Contains(c.char));
             def delimS = delimSigns.Map(delimiter => {
                 // 記号のデリミタは演算子の記号が続いてはいけない(カッコなどは連続していい)
@@ -269,18 +287,11 @@ namespace Atla.Lang.Parser
                 Token.String(s.string, span)
             });
             
-            tokens = ws.many()._andR(str._or(int)._or(op)._or(delim)._or(id)).sepBy(ws.many())._andL(ws.many())._andL(eoi());
+            tokens = ws.many()._andR(str._or(int)._or(op)._or(delim)._or(id)._or(comment)).sepBy(ws.many())._andL(ws.many())._andL(eoi());
         }
         
         public tokenize(text: string): Result[SourceChar, list[Token]] {
-            // remove comments
-            def lines = text.Replace("\r\n", "\n").Replace("\r", "\n").SplitToList('\n');
-            def sb = System.Text.StringBuilder();
-            foreach (line in lines) {
-                _ = sb.AppendLine(line.Split('#').First())
-            }
-            
-            tokens.parse(SourceInput(sb.ToString()))
+            tokens.parse(SourceInput(text.Replace("\r\n", "\n").Replace("\r", "\n"))); // 改行コードを統一する
         }
     }
 }
