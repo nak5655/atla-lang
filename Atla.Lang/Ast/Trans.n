@@ -8,7 +8,9 @@ using Nemerle.Imperative;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
 using Atla;
+using Atla.Lang;
 
 namespace Atla.Lang.Ast
 {
@@ -17,19 +19,8 @@ namespace Atla.Lang.Ast
     // スコープは作るけど操作は無し
     public class Trans
     {
-        public trans(typeHint: Ast.TypeHint): Hir.TypeHint {
-            def hint = match (typeHint) {
-                | Ast.TypeHint.Unit => Hir.TypeHint.Name(Hir.Scope.unitTypeName)
-                | Ast.TypeHint.Fn(args, ret) => Hir.TypeHint.Fn(args.Map(trans), trans(ret))
-                | Ast.TypeHint.Id(value) => Hir.TypeHint.Name(value)
-                | Ast.TypeHint.Generics(_base, _params) => Hir.TypeHint.Generics(trans(_base), _params.Map(trans))
-            };
-            
-            hint.addSpan(typeHint.span)
-        }
-        
-        public trans(typeHint: option[Ast.TypeHint]): Hir.TypeHint {
-            if (typeHint.IsNone) Hir.TypeHint.None() else trans(typeHint.Value)
+        public trans(typeHint: option[TypeHint]): TypeHint {
+            if (typeHint.IsNone) TypeHint.None() else typeHint.Value
                 
         }
         
@@ -61,7 +52,7 @@ namespace Atla.Lang.Ast
                 }
                 | Ast.Expr.Fn(args, body) => {
                     def fn = Hir.Expr.Fn(scope, args.Map(_.name));
-                    fn.typeHint = Hir.TypeHint.Fn(args.Map(arg => trans(arg.typeHint)), trans(body.typeHint));
+                    fn.typeHint = TypeHint.Fn(args.Map(arg => arg.typeHint), trans(body.typeHint));
                     fn.body = trans(fn.scope, body);
                     fn
                 }
@@ -78,7 +69,7 @@ namespace Atla.Lang.Ast
             match (ast) {
                 | Ast.Decl.Import(path) => mod.import(path)
                 | Ast.Decl.Fn(name, args, ret, body) => {
-                    def fnType = Hir.TypeHint.Fn(args.Map(a => trans(a.typeHint)), trans(ret));
+                    def fnType = TypeHint.Fn(args.Map(_.typeHint), ret);
                     _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
                     
                     def fn = Hir.Expr.Fn(mod.scope, args.Map(_.name));

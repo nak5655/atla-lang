@@ -84,7 +84,7 @@ namespace Test.ParserTest
         
         [Test]
         public EasyTest(): void {
-            def code = Misc.readCase("easy.atla");
+            def code = Misc.readCase("hello.atla");
             
             def lexer = Lexer();
             match (lexer.tokenize(code)) {

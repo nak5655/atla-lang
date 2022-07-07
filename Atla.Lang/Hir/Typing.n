@@ -8,6 +8,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Atla.Lang;
+
 namespace Atla.Lang.Hir
 {
     public class Typing
@@ -18,7 +20,7 @@ namespace Atla.Lang.Hir
         public typing(hir: Hir.Module): void {
             foreach (import in hir.imports) {
                 // TODO: import atla module (non Native)
-                def type = Hir.Type.Native(System.Type.GetType(import.dotted()));
+                def type = Type.Native(System.Type.GetType(import.dotted()));
                 // declare short name (e.g. "System.String" is declared as "String")
                 when (!import.path.IsEmpty()) {
                     hir.scope.declareType(import.path.Last(), type);
@@ -45,9 +47,9 @@ namespace Atla.Lang.Hir
             hir.type.unify(expected);
             
             match (hir) {
-                | Unit => hir.type.unify(scope.globalScope().resolveType(Scope.unitTypeName)) // オーバーロード対策で念のためGlobalScopeで名前解決する
-                | Int => hir.type.unify(scope.globalScope().resolveType(Scope.intTypeName))
-                | String => hir.type.unify(scope.globalScope().resolveType(Scope.stringTypeName))
+                | Unit => hir.type.unify(scope.globalScope().resolveType(Type.UNIT_NAME)) // オーバーロード対策で念のためGlobalScopeで名前解決する
+                | Int => hir.type.unify(scope.globalScope().resolveType(Type.INT_NAME))
+                | String => hir.type.unify(scope.globalScope().resolveType(Type.STRING_NAME))
                 | Block(blockScope, stmts) => {
                     foreach (stmt in stmts) {
                         typing(blockScope, stmt);
@@ -57,7 +59,7 @@ namespace Atla.Lang.Hir
                         match (stmts.Last()) {
                             | Hir.Stmt.Expr(e) => blockScope.retType.unify(e.type)  // ブロックの最後の式は返り値とする
                             | Hir.Stmt.Return => ()
-                            | _ => blockScope.retType.unify(scope.globalScope().resolveType(Scope.unitTypeName)) // ただの文ならunit型とする
+                            | _ => blockScope.retType.unify(scope.globalScope().resolveType(Type.UNIT_NAME)) // ただの文ならunit型とする
                         }
                     }
                     
@@ -91,13 +93,13 @@ namespace Atla.Lang.Hir
                     mutable ty = scope.resolveType(tyName);
                     match (ty.resolved()) {
                         | Type.Class(_, staticMembers) => {
-                            def es = staticMembers.Get(name).Value.Filter(e => e.type.canUnify(hir.type));
+                            def es = staticMembers.Get(name).Value.Filter(e => e.canUnify(hir.type));
                             if (es.Length == 1) {
-                                _ = hir.type.unify(es.First().type)
+                                _ = hir.type.unify(es.First())
                             } else if (es.IsEmpty()) {
-                                hir.type.errors.Add(Hir.Error.UndefinedReference($"$tyName::$name", hir.type))
+                                hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
                             } else {
-                                hir.type.errors.Add(Hir.Error.AmbiguousType(es.Map(_.type)))
+                                hir.type.errors.Add(TypeError.Ambiguous(es))
                             }
                         }
                         | Type.Native(nt) => {
@@ -114,12 +116,12 @@ namespace Atla.Lang.Hir
                             if (overloads.Length == 1) {
                                 _ = hir.type.unify(Type.Fn.from(overloads.First()))
                             } else if (overloads.Length > 1) {
-                                hir.type.errors.Add(Hir.Error.AmbiguousType(overloads.Map(m => Type.Fn.from(m))))
+                                hir.type.errors.Add(TypeError.Ambiguous(overloads.Map(m => Type.Fn.from(m))))
                             } else {
-                                hir.type.errors.Add(Hir.Error.UndefinedReference($"$tyName::$name", hir.type))
+                                hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
                             }
                         }
-                        | _ => hir.type.errors.Add(Hir.Error.UndefinedType(tyName))
+                        | _ => hir.type.errors.Add(TypeError.Undefined(tyName))
                     }
                 }
                 | Apply(fn, args) => {
@@ -129,6 +131,17 @@ namespace Atla.Lang.Hir
                     }
                     // 関数を解決
                     typing(scope, fn, Type.Fn(args.Map(_.type), expected));
+                    
+                    // 関数の型から引数と返り値を推論
+                    match (fn.type.resolved()) {
+                        | Type.Fn(xs, y) when xs.Length == args.Length => {
+                            foreach ((arg, x) in args.Zip(xs)) {
+                                arg.type.unify(x)
+                            }
+                            
+                            hir.type.unify(y)
+                        }
+                    }
                 }
             }
         }

@@ -6,12 +6,15 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
+using Atla.Lang;
+using Atla.Lang.Hir;
 using Atla.Lang.Mir;
 
 namespace Atla.Lang.Hir
 {
-    //public class Trans
-    //{
+    public class Trans
+    {
     //    parent: option[Trans];
     //    mutable varTable: Hashtable[string, Hir.Type]; // TODO: 名前と型ヒントをキーにする
     //    mutable typeTable: Hashtable[string, Hir.Type];
@@ -38,56 +41,55 @@ namespace Atla.Lang.Hir
     //            | Hir.Type.Var(x) => throw System.Exception($"Type Inference Failure: $x")
     //        }
     //    }
+        /*
+        public trans(hir: Hir.Expr): list[Mir.Ins] {
+            match (hir) {
+                | Hir.Expr.Call(fn, args) => {
+                    // TODO: K正規化
+                    mutable mirArgs: list[Mir.Arg] = [];
+                    foreach (arg in args) {
+                        match (arg) {
+                            | Hir.Expr.String(s) => mirArgs += [Mir.Arg.Imm(Mir.Imm.String(s))]
+                            | Hir.Expr.Id(name) => mirArgs += [Mir.Arg.Id(Mir.Id(name, trans(resolveVar(name).Value)))]
+                        }
+                    }
+                    match (fn) {
+                        | Hir.Expr.Id(name) => [Mir.Ins.Call(Mir.Id(name, trans(resolveVar(name).Value)), mirArgs)]
+                        // TODO 関数式
+                    }
+                }
+                | Hir.Expr.Fn => {}
+            }
+        }
         
-    //    public trans(hir: Hir.Expr): list[Mir.Ins] {
-    //        match (hir) {
-    //            | Hir.Expr.Call(fn, args) => {
-    //                // TODO: K正規化
-    //                mutable mirArgs: list[Mir.Arg] = [];
-    //                foreach (arg in args) {
-    //                    match (arg) {
-    //                        | Hir.Expr.String(s) => mirArgs += [Mir.Arg.Imm(Mir.Imm.String(s))]
-    //                        | Hir.Expr.Id(name) => mirArgs += [Mir.Arg.Id(Mir.Id(name, trans(resolveVar(name).Value)))]
-    //                    }
-    //                }
-    //                match (fn) {
-    //                    | Hir.Expr.Id(name) => [Mir.Ins.Call(Mir.Id(name, trans(resolveVar(name).Value)), mirArgs)]
-    //                    // TODO 関数式
-    //                }
-    //            }
-    //            | Hir.Expr.Fn => {}
-    //        }
-    //    }
+        public trans(import: Hir.Import): void {
+            // TODO
+            //| Hir.Decl.Import(name) => {
+            //    def type = System.Type.GetType(name);
+            //    typeTable.Add(name, Hir.Type.Native(type));
+            //    // TODO: ドット区切り対応 System.Console を Console として追加登録する
+            //    []
+            //}
+        }
         
-    //    public trans(hir: Hir.Decl): list[Mir.Decl] {
-    //        match (hir) {
-    //            | Hir.Decl.Import(name) => {
-    //                def type = System.Type.GetType(name);
-    //                typeTable.Add(name, Hir.Type.Native(type));
-    //                // TODO: ドット区切り対応 System.Console を Console として追加登録する
-    //                []
-    //            }
-    //            | Hir.Decl.Expr(name, expr) => {
-    //                mutable rhs = trans(expr);
-                    
-    //                varTable.Add(name, Hir.Type.Var(None()));
-    //                // TODO: Type Inference
-    //                def typ = Hir.Type.Fn([], Hir.Type.Unit());
-                    
-    //                match (typ) {
-    //                    | Hir.Type.Fn => [Mir.Decl.Fn(Mir.Id(name, trans(typ)), rhs)]
-    //                }
-    //            }
-    //        }
-    //    }
-        
-    //    public trans(hir: Hir.Module): Mir.Module {
-    //        mutable decls: list[Mir.Decl] = [];
-    //        foreach (decl in hir.decls) {
-    //            decls += trans(decl)
-    //        }
+        public trans(name: string, hir: Hir.Expr): list[Mir.Decl] {
+            mutable rhs = trans(hir);
             
-    //        Mir.Module(hir.name, decls)
-    //    }
-    //}
+            match (hir.type.resolved()) {
+                | Type.Fn => [Mir.Decl.Fn(Mir.Id(name, ), rhs)]
+                
+            }
+        }
+        
+        public trans(hir: Hir.Module): Mir.Module {
+            mutable decls: list[Mir.Decl] = [];
+            foreach ((name, overloads) in hir.members.KeyValuePairs) {
+                foreach (overload in overloads) {
+                    decls += trans(name, overload)
+                }
+            }
+          
+            Mir.Module(hir.name, decls)
+        }*/
+    }
 }

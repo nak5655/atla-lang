@@ -7,6 +7,8 @@ using Nemerle.Imperative;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
+using Atla.Lang;
 using Atla.Lang.Parse;
 
 
@@ -19,14 +21,6 @@ namespace Atla.Lang.Hir
 {
     public variant Error {
         | DuplicatedDeclaration { name: string; type: Type; already: Type }
-        | TypeUnificationFailure {
-            refered: Type; referer: Type;
-            
-            public override ToString(): string {
-                $"Could not unify type $refered and $referer."
-            }
-        }
-        | TypeRecursiveReference { a: Type; b: Type }
         | UndefinedReference {
             name: string; type: Type;
             
@@ -34,15 +28,20 @@ namespace Atla.Lang.Hir
                 $"Undefined variable. $name: $type"
             }
         }
-        | UndefinedType {
-            name: string;
+        | Type {
+            value: TypeError;
             
-            public override ToString(): string {
-                $"$name type is not defined."
+            public override Equals(other: object): bool {
+                match (other) {
+                    | Error.Type(te) => value.Equals(te)
+                    | _ => false
+                }
+            }
+            
+            public override GetHashCode(): int {
+                value.GetHashCode()
             }
         }
-        | AmbiguousType { types: list[Type] }
-        | TypeInferenceUnmatched { types: list[Type] }
     }
     
     public variant Stmt: HasSpan[Expr] {
@@ -155,8 +154,8 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public mutable typeHint: Hir.TypeHint = Hir.TypeHint.None();
-        public mutable type: Hir.Type.Var = Type.Var();
+        public mutable typeHint: TypeHint = TypeHint.None();
+        public mutable type: Type.Var = Type.Var();
         
         // TODO Type.Varのエラーが重複する
         public scanErrors(): IEnumerable[(Error * Span)] {
@@ -171,7 +170,7 @@ namespace Atla.Lang.Hir
                 | StaticMember => []
                 | Apply(fn, args) => fn.scanErrors().Concat(args.SelectMany(_.scanErrors()))
             }
-            es.Concat(type.scanErrors().Select(e => (e, span)))
+            es.Concat(type.scanErrors().Select(e => (Error.Type(e), span)))
         }
     }
     

@@ -7,19 +7,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Atla;
 
+using Atla;
+using Atla.Lang;
 using Atla.Lang.Parse;
 
 namespace Atla.Lang.Ast
 {
-    public variant TypeHint: HasSpan[TypeHint] {
-        | Unit
-        | Fn { args: list[TypeHint]; ret: TypeHint }
-        | Id { value: string }
-        | Generics { typeHint: TypeHint; _params: list[TypeHint] }
-    }
-    
     [Record]
     public class FnArg: HasSpan[FnArg] {
         public name: string;

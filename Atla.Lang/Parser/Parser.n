@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
+using Atla.Lang;
 using Atla.Lang.Parse;
 using Atla.Lang.Ast;
 
@@ -230,17 +231,17 @@ namespace Atla.Lang.Parser
             });
             stmt.impl = retStmt._or(exprStmt);
             
-            def typeHintFactor: Parser[Token, Ast.TypeHint] = tid.map(a => {
-                spanned(TypeHint.Id(a.value), [a])
+            def typeHintFactor: Parser[Token, TypeHint] = tid.map(a => {
+                spanned(TypeHint.Name(a.value), [a])
             });
-            def typeHintParen: Parser[Token, Ast.TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
+            def typeHintParen: Parser[Token, TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
                 match (mt) {
                     | Some(t) => t
                     | _ => TypeHint.Unit()
                 }
             }))._and(delim(")")).map((ab, c) => spanned(ab[1], [ab[0], c]));
             def typeHintTerm = typeHintParen._or(typeHintFactor);
-            def typeHint: Parser[Token, Ast.TypeHint] = typeHintTerm.many1().map(ts => {
+            def typeHint: Parser[Token, TypeHint] = typeHintTerm.many1().map(ts => {
                 if (ts.Length == 1)
                     ts.First()
                 else
@@ -261,11 +262,11 @@ namespace Atla.Lang.Parser
             })._andL(eoi()))).map((a, b) => spanned(b, [a]));
             
             def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                def (s, t) = s_t: Token.Id * Ast.TypeHint;
+                def (s, t) = s_t: Token.Id * TypeHint;
                 ClassItem.Field(s.value, t, false, e)
             })).map((a, b) => spanned(b, [a]));
             def classVarField: Parser[Token, ClassItem] = delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                def (s, t) = s_t: Token.Id * Ast.TypeHint;
+                def (s, t) = s_t: Token.Id * TypeHint;
                 ClassItem.Field(s.value, t, true, e)
             })).map((a, b) => spanned(b, [a]));
             def classMethod: Parser[Token, ClassItem] = fnDecl.map(d => {

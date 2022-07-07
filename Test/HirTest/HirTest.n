@@ -9,6 +9,7 @@ using System.Linq;
 
 using NUnit.Framework;
 
+using Atla.Lang;
 using Atla.Lang.Hir;
 
 namespace Test.HirTest
@@ -28,7 +29,7 @@ namespace Test.HirTest
             Atla.Lang.Hir.Typing().typing(hir);
             
             def errors = hir.scanErrors().Distinct().ToList();
-            Assert.Equals(1, errors.Count());
+            Assert.AreEqual(0, errors.Count());
         }
         
        [Test]
@@ -43,7 +44,7 @@ namespace Test.HirTest
             Atla.Lang.Hir.Typing().typing(hir);
             
             def errors = hir.scanErrors().Distinct().ToList();
-            Assert.Equals(1, errors.Count());
+            Assert.AreEqual(1, errors.Count());
         }
         
         [Test]
@@ -79,6 +80,7 @@ namespace Test.HirTest
             Typing().typing(mod);
             
             def fnType = mainFn.type.resolved() :> Type.Fn;
+            Assert.AreEqual(typeof(int), (fnType.args.First() :> Type.Native).type);
             Assert.AreEqual(typeof(int), (fnType.ret :> Type.Native).type);
         }
     }

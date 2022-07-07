@@ -1,5 +1,0 @@
-﻿import System.Array
-import System.Console
-
-fn main (args: String Array): () = # comment
-	Console.WriteLine "Hello"

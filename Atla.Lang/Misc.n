@@ -10,7 +10,7 @@ using System.Text;
 
 namespace Atla.Lang
 {
-    class Misc
+    public class Misc
     {
         public static joinToString[T](sep: string, values: list[T]): string {
             def sb = StringBuilder();
@@ -25,6 +25,17 @@ namespace Atla.Lang
         
         public static joinToString[T](sep: string, values: List[T]): string {
             joinToString(sep, values.ToNList())
+        }
+        
+        public static compileToTypedHir(code: string): Hir.Module {
+            def lexer = Atla.Lang.Parser.Lexer();
+            def tokens = lexer.tokenize(code).getResult().Value;
+            def parser = Atla.Lang.Parser.Parser();
+            def ast = parser.mod.parse(Atla.Lang.Parser.TokenInput(tokens, 0)).getResult().Value;
+            def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
+            Atla.Lang.Hir.Typing().typing(hir);
+            
+            hir
         }
     }
 }

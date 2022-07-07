@@ -8,20 +8,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Atla.Lang;
+
 namespace Atla.Lang.Hir
 {
     // a.k.a SymbolTable or Environment
-    public class Scope {
+    public class Scope: Atla.Lang.TypeScope {
         parent: option[Scope] = None();
         varTable: Hashtable[string, List[Type]] = Hashtable();
         typeTable: Hashtable[string, Type] = Hashtable();
         implTable: Hashtable[string, Impl] = Hashtable();
         public retType: Type = Type.Var();
-        
-        // Primery Types
-        public static unitTypeName: string = "Unit";
-        public static intTypeName: string = "Int";
-        public static stringTypeName: string = "String";
         
         public this(parent: Scope) {
             this.parent = Some(parent);
@@ -29,12 +26,12 @@ namespace Atla.Lang.Hir
         
         public this() {
             // Global Scope
-            typeTable.Add(unitTypeName, Type.Native(typeof(void)));
-            typeTable.Add(intTypeName, Type.Native(typeof(int)));
-            typeTable.Add(stringTypeName, Type.Native(typeof(string)));
+            typeTable.Add(Type.UNIT_NAME, Type.Native(typeof(void)));
+            typeTable.Add(Type.INT_NAME, Type.Native(typeof(int)));
+            typeTable.Add(Type.STRING_NAME, Type.Native(typeof(string)));
             
             def tint = Type.Native(typeof(int));
-            varTable.Add("+", [Type.Var(Type.Fn([tint, tint], tint))].ToList());
+            varTable.Add("+", [Type.Fn([tint, tint], tint)].ToList());
         }
         
         // TODO 経路圧縮
@@ -56,7 +53,7 @@ namespace Atla.Lang.Hir
             } else if (parent.IsSome) {
                 parent.Value.resolveType(id)
             } else {
-                Type.Error(Error.UndefinedType(id))
+                Type.Error(TypeError.Undefined(id))
             }
         }
         
@@ -70,7 +67,7 @@ namespace Atla.Lang.Hir
         }
         
         // 名前解決での優先順で返す（内側のスコープを優先）
-        public resolveVar(id: string, type: Hir.Type): Hir.Type {
+        public resolveVar(id: string, type: Type): Type {
             when (varTable.ContainsKey(id)) {
                 def ts = varTable.Get(id).Value.Filter(t => type.canUnify(t)) : list[Type];
                 return if (ts.Length == 0) {
@@ -78,7 +75,7 @@ namespace Atla.Lang.Hir
                         | Some(s) => s.resolveVar(id, type)
                         | _ => {
                             // 未定義の変数は新たに定義したうえでエラーとして返す
-                            def e = Type.Var(Type.Error(Error.UndefinedReference(id, type)));
+                            def e = Type.Var(Type.Error(TypeError.Undefined(id)));
                             declareVar(id, e);
                             e
                         }
@@ -87,7 +84,7 @@ namespace Atla.Lang.Hir
                     ts.First()
                 } else {
                     // 未定義の変数は新たに定義したうえでエラーとして返す
-                    def e = Type.Var(Type.Error(Error.AmbiguousType(ts.Map(_ : Type))));
+                    def e = Type.Var(Type.Error(TypeError.Ambiguous(ts.Map(_ : Type))));
                     declareVar(id, e);
                     e
                 }
@@ -97,7 +94,7 @@ namespace Atla.Lang.Hir
                 | Some(s) => s.resolveVar(id, type)
                 | _ => {
                     // 未定義の変数は新たに定義したうえでエラーとして返す
-                    def e = Type.Var(Type.Error(Error.UndefinedReference(id, type)));
+                    def e = Type.Var(Type.Error(TypeError.Undefined(id)));
                     declareVar(id, e);
                     e
                 }

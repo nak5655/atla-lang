@@ -12,8 +12,32 @@ using System.Text;
 using Atla.Lang.Parse;
 using Atla.Lang;
 
-namespace Atla.Lang.Hir
+namespace Atla.Lang
 {
+    public variant TypeError {
+        | Undefined {
+            name: string;
+            
+            public override ToString(): string {
+                $"$name type is not defined."
+            }
+        }
+        | RecursiveReference { a: Type; b: Type }
+        | Ambiguous { types: list[Type] }
+        | UnificationFailure {
+            refered: Type; referer: Type;
+            
+            public override ToString(): string {
+                $"Could not unify type $refered and $referer."
+            }
+        }
+        | InferenceUnmatched { types: list[Type] }
+    }
+    
+    public interface TypeScope {
+        resolveType(name: string): Type
+    }
+    
     public variant TypeHint: HasSpan[TypeHint] {
         | None
         | Name {
@@ -41,15 +65,19 @@ namespace Atla.Lang.Hir
         }
         | Generics { _base: TypeHint; _params: list[TypeHint] }
         
-        public resolve(scope: Scope): Type { match (this) {
-            | Hir.TypeHint.None => Type.Unknown()
-            | Hir.TypeHint.Name(name) => scope.resolveType(name)
-            | Hir.TypeHint.Fn(args, ret) => Type.Fn(args.Map(arg => arg.resolve(scope)), ret.resolve(scope))
-            | Hir.TypeHint.Generics(_base, _params) => Type.Generics(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
+        public resolve(scope: TypeScope): Type { match (this) {
+            | TypeHint.None => Type.Unknown()
+            | TypeHint.Name(name) => scope.resolveType(name)
+            | TypeHint.Fn(args, ret) => Type.Fn(args.Map(arg => arg.resolve(scope)), ret.resolve(scope))
+            | TypeHint.Generics(_base, _params) => Type.Generics(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
         }}
+        
+        public static Unit(): TypeHint {
+            Name(Type.UNIT_NAME)
+        }
     }
     
-    public variant Type {
+    public variant Type: System.IEquatable[Type] {
         | Unknown {
             public override ToString(): string {
                 "Unknown"
@@ -74,21 +102,13 @@ namespace Atla.Lang.Hir
                 this
             }
             
-            // pruneと違って型関数内の型変数を置換しない
-            public unVar(): Type {
-                match (instance) {
-                    | it is Var => it.unVar()
-                    | _ => instance
-                }
-            }
-            
             public override ToString(): string {
                 $"Var($instance)"
             }
         }
         | Class {
-            public members: Hashtable[string, List[Expr]] = Hashtable();
-            public staticMembers: Hashtable[string, List[Expr]] = Hashtable();
+            public members: Hashtable[string, List[Type]] = Hashtable();
+            public staticMembers: Hashtable[string, List[Type]] = Hashtable();
         }
         | Native {
             public type: System.Type;
@@ -119,16 +139,21 @@ namespace Atla.Lang.Hir
         }
         | Generics { _base: Type; _params: list[Type] }
         | Error {
-            public this(error: Hir.Error) {
+            public this(error: TypeError) {
                 this.errors.Add(error);
             }
             
-            public this(errors: IEnumerable[Hir.Error]) {
+            public this(errors: IEnumerable[TypeError]) {
                 this.errors.AddRange(errors);
             }
         }
         
-        public errors: List[Hir.Error] = List();
+        // Primery Types
+        public static UNIT_NAME: string = "Unit";
+        public static INT_NAME: string = "Int";
+        public static STRING_NAME: string = "String";
+        
+        public errors: List[TypeError] = List();
         
         public canUnify(other: Type): bool {
             def op = other.resolved(); // ここでotherを解決する(最初だけ)
@@ -150,20 +175,21 @@ namespace Atla.Lang.Hir
         }
         
         public unify(other: Type): Type {
-            when (this == other) {
+            // check already unified
+            when (this.unVar() == other.unVar()) {
                 return this;
             }
             
             match ((this, other)) {
                 | (Unknown, _) => other
                 | (_, Unknown) => this
-                | (e is Error, _) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(this, other)])
-                | (_, e is Error) => Type.Error(e.errors.ToNList() + [Hir.Error.TypeUnificationFailure(other, this)])
+                | (e is Error, _) => Type.Error(e.errors.ToNList() + [TypeError.UnificationFailure(this, other)])
+                | (_, e is Error) => Type.Error(e.errors.ToNList() + [TypeError.UnificationFailure(other, this)])
                 | (it is Var, _) => {
                     if (!it.occursIn(other)) {
                         it.instance = it.instance.unify(other);
                     } else {
-                        it.instance = Type.Error(Error.TypeRecursiveReference(this, other));
+                        it.instance = Type.Error(TypeError.RecursiveReference(this, other));
                     }
                     it.simplify()
                 }
@@ -175,12 +201,13 @@ namespace Atla.Lang.Hir
                 | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
                 // TODO
                 | _ => {
-                    Type.Error(Hir.Error.TypeUnificationFailure(this, other))
+                    Type.Error(TypeError.UnificationFailure(this, other))
                 }
             }
         }
         
         // thisは変更しないで型変数を可能な限り取り除く
+        // TODO rename to "pruned"
         public resolved(): Type {
             match (this) {
                 | Var(t) => t.resolved()
@@ -190,6 +217,19 @@ namespace Atla.Lang.Hir
             }
         }
         
+        // pruneと違って型関数内の型変数を置換しない
+        public unVar(): Type {
+            match (this) {
+                | Var(t) => {
+                    match (t) {
+                        | it is Var => it.unVar()
+                        | _ => t
+                    }
+                }
+                | _ => this
+            }
+        }
+            
         public occursIn(other: Type): bool {
             when (this == other) {
                 return true
@@ -203,7 +243,7 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public scanErrors(): IEnumerable[Hir.Error] {
+        public scanErrors(): IEnumerable[TypeError] {
             def ret = match (this) {
                 | Var(t) => t.scanErrors()
                 | Fn(args, ret) => args.SelectMany(_.scanErrors()).Concat(ret.scanErrors())
