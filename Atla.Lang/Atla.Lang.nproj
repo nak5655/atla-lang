@@ -59,7 +59,22 @@
     </MacroReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Either.n">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mir\Frame.n">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mir\Mir.n">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Mir\Trans.n">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Misc.n">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Result.n">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Type.n">
@@ -92,12 +107,6 @@
     <Compile Include="Hir\Typing.n">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Mir\Mir.n">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="Mir\Trans.n">
-      <SubType>Code</SubType>
-    </Compile>
     <Compile Include="Parser\Lexer.n">
       <SubType>Code</SubType>
     </Compile>
@@ -128,7 +137,7 @@
     <Folder Include="Ast\" />
     <Folder Include="Cir\" />
     <Folder Include="Hir\" />
-    <Folder Include="Mir\" />
+    <Folder Include="Mir" />
     <Folder Include="Parser\" />
     <Folder Include="Parse\" />
     <Folder Include="Properties\" />

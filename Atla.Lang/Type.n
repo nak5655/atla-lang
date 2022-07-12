@@ -254,9 +254,10 @@ namespace Atla.Lang
         }
         
         public ToSystemType(): System.Type {
-            match (this) {
+            match (this.pruned()) {
                 // TODO
                 | Native(t) => t
+                | Generics(b, ps) => b.ToSystemType()
             }
         }
         

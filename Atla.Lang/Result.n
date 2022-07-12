@@ -1,0 +1,51 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang
+{
+    public variant Result[A] {
+        | Success { result: A }
+        | Failure { error: string }
+        
+        public getResult(): option[A] {
+            match (this) {
+                | Success(r) => Some(r)
+                | _ => None()
+            }
+        }
+        
+        public isFailure(): bool {
+            match (this) {
+                | Success => false
+                | Failure => true
+            }
+        }
+        
+        public getError(): option[string] {
+            match (this) {
+                | Success => None()
+                | Failure(s) => Some(s)
+            }
+        }
+        
+        public map[B](f: A -> B): Result[B] {
+            match (this) {
+                | Success(r) => Result.Success(f(r))
+                | Failure(e) => Result.Failure(e)
+            }
+        }
+        
+        public bind[B](f: A -> Result[B]): Result[B] {
+            match (this) {
+                | Success(r) => f(r)
+                | Failure(e) => Result.Failure(e)
+            }
+        }
+    }
+}

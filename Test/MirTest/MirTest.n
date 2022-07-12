@@ -6,9 +6,9 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
 using NUnit.Framework;
 
-using Atla.Lang;
 using Atla.Lang.Mir;
 
 namespace Test.MirTest
@@ -17,40 +17,13 @@ namespace Test.MirTest
     class MirTest
     {
         [Test]
-        public TypeEqualityTest(): void {
-            def a = Type.Fn([], Type.Native(typeof(void)));
-            def b = Type.Fn([], Type.Native(typeof(void)));
-            Assert.AreEqual(a, b);
+        public MirEasyTest(): void {
+            def asm = Atla.Lang.Mir.Assembly("Test");
             
-            def c = Type.Fn([Type.Native(typeof(string))], Type.Native(typeof(void)));
-            def d = Type.Fn([Type.Native(typeof(string))], Type.Native(typeof(void)));
-            Assert.AreEqual(c, d);
-        }
-        
-        [Test]
-        public IdEqualityTest(): void {
-            def a = Id("aaa", Type.Native(typeof(string)));
-            def b = Id("aaa", Type.Native(typeof(string)));
-            Assert.AreEqual(a, b);
+            def code = Misc.readCase("hello.atla");
+            def mir = Atla.Lang.Misc.compileToMir(asm, "main", code);
             
-            def c = Id("aaa", Type.Fn([Type.Native(typeof(string))], Type.Native(typeof(void))));
-            def d = Id("aaa", Type.Fn([Type.Native(typeof(string))], Type.Native(typeof(void))));
-            Assert.AreEqual(c, d);
-        }
-        
-        [Test]
-        public IdHashTest(): void {
-            def table: Hashtable[Atla.Lang.Mir.Id, int] = Hashtable();
-            
-            def a = Id("aaa", Type.Native(typeof(string)));
-            def b = Id("aaa", Type.Native(typeof(string)));
-            table.Add(a, 0);
-            Assert.IsTrue(table.ContainsKey(b));
-           
-            def c = Id("aaa", Type.Fn([Type.Native(typeof(string))], Type.Native(typeof(void))));
-            def d = Id("aaa", Type.Fn([Type.Native(typeof(string))], Type.Native(typeof(void))));
-            table.Add(c, 0);
-            Assert.IsTrue(table.ContainsKey(d));
+            Assert.AreEqual(1, mir.methods.Count());
         }
     }
 }

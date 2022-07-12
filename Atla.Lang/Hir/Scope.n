@@ -9,34 +9,123 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Atla.Lang;
+using Atla.Lang.Mir;
 
 namespace Atla.Lang.Hir
 {
-    // a.k.a SymbolTable or Environment
-    public class Scope: Atla.Lang.TypeScope {
-        parent: option[Scope] = None();
-        varTable: Hashtable[string, List[Type]] = Hashtable();
-        typeTable: Hashtable[string, Type] = Hashtable();
-        implTable: Hashtable[string, Impl] = Hashtable();
-        public retType: Type = Type.Var();
+    [Record]
+    public class Symbol {
+        public name: string;
+        public type: Type;
+        public mutable isArg: bool;
         
-        public this(parent: Scope) {
-            this.parent = Some(parent);
+        public this(name: string, type: Type) {
+            this.name = name;
+            this.type = type;
+            this.isArg = false;
+        }
+    }
+    
+    // a.k.a SymbolTable or Environment
+    public variant Scope: Atla.Lang.TypeScope {
+        | Global {
+            __dummy: int = 0;
+            
+            public this() {
+                typeTable.Add(Type.UNIT_NAME, Type.Native(typeof(void)));
+                typeTable.Add(Type.INT_NAME, Type.Native(typeof(int)));
+                typeTable.Add(Type.STRING_NAME, Type.Native(typeof(string)));
+            
+                def tint = Type.Native(typeof(int));
+                varTable.Add(Symbol("+", Type.Fn([tint, tint], tint)));
+            }
+        }
+        | Assembly {
+            public parent: Scope.Global;
+            public name: string;
+        }
+        | Module {
+            public parent: Scope;
+            public name: string;
+        }
+        | Fn {
+            public parent: Scope;
+            // TODO name あってもいいかも
+            public retType: Type;
+            
+            public this(parent: Scope) {
+                this.parent = parent;
+                retType = Type.Var();
+            }
+            
+            public declareArg(id: string, type: Type): void {
+                varTable.Add(Symbol(id, type, true));
+            }
+        }
+        | Block {
+            public parent: Scope;
+            public name: option[string];
+            public retType: Type;
+            
+            public mutable endLabel: Mir.Ins.Label;
+            public mutable retSymbol: Mir.Symbol;
+            
+            public this(parent: Scope, name: option[string]) {
+                this.parent = parent;
+                this.name = name;
+                retType = Type.Var();
+                endLabel = Mir.Ins.Label();
+            }
         }
         
-        public this() {
-            // Global Scope
-            typeTable.Add(Type.UNIT_NAME, Type.Native(typeof(void)));
-            typeTable.Add(Type.INT_NAME, Type.Native(typeof(int)));
-            typeTable.Add(Type.STRING_NAME, Type.Native(typeof(string)));
+        public varTable: List[Symbol] = List();
+        typeTable: Hashtable[string, Type] = Hashtable();
+        implTable: Hashtable[string, Impl] = Hashtable();
+        
+        public parent(): option[Scope] {
+            match (this) {
+                | Global => None()
+                | Module(p, _) => Some(p)
+                | it is Fn => Some(it.parent)
+                | it is Block => Some(it.parent)
+            }
+        }
+        
+        public name(): option[string] {
+            match (this) {
+                | Global => None()
+                | Module(_, n) => Some(n)
+                | Fn => None()
+                | it is Block => it.name
+            }
+        }
+        
+        public retType(): option[Type] {
+            match (this) {
+                | Global => None()
+                | Module => None()
+                | it is Fn => Some(it.retType)
+                | it is Block => Some(it.retType)
+            }
+        }
+        
+        public path(): string {
+            def p = parent().Map(_.path()).WithDefault("");
             
-            def tint = Type.Native(typeof(int));
-            varTable.Add("+", [Type.Fn([tint, tint], tint)].ToList());
+            match (name()) {
+                | Some(s) => if (p.Length > 0) $"$p::$s" else s
+                | None => p
+            }
+        }
+        
+        public fullName(name: string): string {
+            def p = path();
+            if (p.Length > 0) $"$p::$name" else name
         }
         
         // TODO 経路圧縮
         public globalScope(): Scope {
-            match (parent) {
+            match (parent()) {
                 | Some(p) => p.globalScope()
                 | _ => this
             }
@@ -50,54 +139,41 @@ namespace Atla.Lang.Hir
         public resolveType(id: string): Type {
             if (typeTable.ContainsKey(id)) {
                 typeTable.Get(id).Value
-            } else if (parent.IsSome) {
-                parent.Value.resolveType(id)
             } else {
-                Type.Error(TypeError.Undefined(id))
+                match (parent()) {
+                    | Some(p) => p.resolveType(id)
+                    | _ => Type.Error(TypeError.Undefined(id))
+                }
             }
         }
         
         public declareVar(id: string, type: Type): void {
-            if (varTable.ContainsKey(id)) {
-                def types = varTable.Get(id).Value;
-                types.Add(type);
-            } else {
-                varTable.Set(id, [type].ToList());
-            }
+            varTable.Add(Symbol(id, type));
         }
         
         // 名前解決での優先順で返す（内側のスコープを優先）
-        public resolveVar(id: string, type: Type): Type {
-            when (varTable.ContainsKey(id)) {
-                def ts = varTable.Get(id).Value.Filter(t => type.canUnify(t)) : list[Type];
-                return if (ts.Length == 0) {
-                    match (parent) {
-                        | Some(s) => s.resolveVar(id, type)
-                        | _ => {
-                            // 未定義の変数は新たに定義したうえでエラーとして返す
-                            def e = Type.Var(Type.Error(TypeError.Undefined(id)));
-                            declareVar(id, e);
-                            e
-                        }
-                    }
-                } else if (ts.Length == 1) {
-                    ts.First()
-                } else {
-                    // 未定義の変数は新たに定義したうえでエラーとして返す
-                    def e = Type.Var(Type.Error(TypeError.Ambiguous(ts.Map(_ : Type))));
-                    declareVar(id, e);
-                    e
-                }
-            }
+        public resolveVar(id: string, type: Type): Symbol {
+            def syms = varTable.Filter(s => s.name == id && type.canUnify(s.type)) : list[Symbol];
             
-            match (parent) {
-                | Some(s) => s.resolveVar(id, type)
-                | _ => {
-                    // 未定義の変数は新たに定義したうえでエラーとして返す
-                    def e = Type.Var(Type.Error(TypeError.Undefined(id)));
-                    declareVar(id, e);
-                    e
+            if (syms.Length == 0) {
+                match (parent()) {
+                    | Some(s) => s.resolveVar(id, type)
+                    | _ => {
+                        // 未定義の変数は新たに定義したうえでエラーとして返す
+                        def e = Type.Var(Type.Error(TypeError.Undefined(id)));
+                        def sym = Symbol(id, e);
+                        varTable.Add(sym);
+                        sym
+                    }
                 }
+            } else if (syms.Length == 1) {
+                syms.First()
+            } else {
+                // 未定義の変数は新たに定義したうえでエラーとして返す
+                def e = Type.Var(Type.Error(TypeError.Ambiguous(syms.Map(_.type))));
+                def sym = Symbol(id, e);
+                varTable.Add(sym);
+                sym
             }
         }
     }

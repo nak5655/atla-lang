@@ -12,6 +12,7 @@ using NUnit.Framework;
 using Atla.Lang.Parser;
 using Atla.Lang.Parse;
 using Atla.Lang.Ast;
+using Atla.Lang.Hir;
 
 namespace Test.AstTest
 {
@@ -26,7 +27,7 @@ namespace Test.AstTest
             def tokens = lexer.tokenize(code).getResult().Value;
             def parser = Parser();
             def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
-            def hir = (Trans().trans(ast, "main"));
+            def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
         }
     }
 }

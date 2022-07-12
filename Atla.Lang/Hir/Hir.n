@@ -93,11 +93,11 @@ namespace Atla.Lang.Hir
             }
         }
         | Block {
-            public scope: Scope;
+            public scope: Scope.Block;
             public mutable stmts: List[Stmt] = List();
             
             public this(parentScope: Scope) {
-                this.scope = Scope(parentScope);
+                this.scope = Scope.Block(parentScope, None());
             } 
             
             public override ToString(): string {
@@ -108,12 +108,12 @@ namespace Atla.Lang.Hir
         | Fn {
             public args: list[FnArg];
             public mutable body: Expr;
-            public scope: Scope;
+            public scope: Scope.Fn;
             
             public this(parentScope: Scope, args: list[string]) {
                 this.args = args.Map(a => FnArg(a));
                 // TODO ブロックスコープで引数を宣言
-                this.scope = Scope(parentScope);
+                this.scope = Scope.Fn(parentScope);
             }
             
             public override ToString(): string {
@@ -164,7 +164,7 @@ namespace Atla.Lang.Hir
                 | Int => []
                 | String => []
                 | Block(_, ss) => ss.SelectMany(_.scanErrors())
-                | Fn(args, body, _) => body.scanErrors()
+                | it is Fn => it.body.scanErrors()
                 | Id => []
                 | Member(e, _) => e.scanErrors()
                 | StaticMember => []
@@ -194,18 +194,18 @@ namespace Atla.Lang.Hir
     }
     
     public class Module {
-        public name: string;
+        public name: string; // TODO scope.nameを返す
         public imports: List[Import];
-        public mutable members: Hashtable[string, List[Expr]]; // overloads
+        public mutable members: Hashtable[string, List[Expr.Fn]]; // overloads
         
-        public scope: Scope;
+        public scope: Scope.Module;
         
-        public this(name: string) {
+        public this(parentScope: Scope.Global, name: string) {
             this.name = name;
             imports = List();
             members = Hashtable();
             
-            scope = Scope();
+            this.scope = Scope.Module(parentScope, name);
         }
         
         public import(path: list[string]): void {
@@ -224,5 +224,16 @@ namespace Atla.Lang.Hir
         public scanErrors(): IEnumerable[(Error * Span)] {
             members.Values.SelectMany(_.SelectMany(_.scanErrors()))
         }
+    }
+    
+    public class Assembly {
+        public name: string;
+        public modules: Hashtable[string, Module];
+        
+        public this(name: string) {
+            this.name = name;
+            this.modules = Hashtable();
+        }
+        
     }
 }

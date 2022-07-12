@@ -1,4 +1,4 @@
-﻿import System.Array
-import System.Console
+﻿import System::Array
+import System::Console
 
-fn main (args: Array String): Unit = Console.WriteLine "Hello"
+fn main (args: Array String): Unit = Console::WriteLine "Hello"

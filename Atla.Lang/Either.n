@@ -7,9 +7,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Atla.Lang.Mir
+namespace Atla.Lang
 {
-    public class Trans
-    {
+    public variant Either[L, R] {
+        | Left { value: L }
+        | Right { value: R }
     }
 }

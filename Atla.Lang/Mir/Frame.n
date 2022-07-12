@@ -1,0 +1,30 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using System.Reflection;
+using System.Reflection.Emit;
+
+namespace Atla.Lang.Mir
+{
+    public class Frame
+    {
+        public args: List[Symbol] = List();
+        public locs: List[Symbol] = List();
+        
+        public declareLocal(symbol: Symbol): void {
+            locs.Add(symbol);
+        }
+        
+        public declareTemp(type: System.Type): Symbol {
+            def sym = Symbol($"tmp`$(locs.Count())", type);
+            locs.Add(sym);
+            sym
+        }
+    }
+}

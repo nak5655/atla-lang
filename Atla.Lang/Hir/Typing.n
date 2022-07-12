@@ -74,7 +74,7 @@ namespace Atla.Lang.Hir
                     }
                     // 引数を関数本体で宣言
                     foreach ((arg, t) in args.Zip(fnType.args)) {
-                        bodyScope.declareVar(arg.name, t);
+                        bodyScope.declareArg(arg.name, t);
                     }
                     bodyScope.retType.unify(fnType.ret);
                     typing(bodyScope, body, fnType.ret);
@@ -83,8 +83,8 @@ namespace Atla.Lang.Hir
                 }
                 | Id(name) => {
                     def var = scope.resolveVar(name, expected);
-                    var.unify(expected);
-                    hir.type.unify(var);
+                    var.type.unify(expected);
+                    hir.type.unify(var.type);
                 }
                 | Member(expr, name) => {
                     typing(scope, expr, Type.Unknown())
@@ -103,6 +103,7 @@ namespace Atla.Lang.Hir
                             }
                         }
                         | Type.Native(nt) => {
+                            // TODO クラス変数
                             def overloads = nt.GetMethods().Filter(methodInfo => {
                                 if (methodInfo.Name == name) {
                                     match (hir.type.pruned()) {
@@ -156,13 +157,13 @@ namespace Atla.Lang.Hir
                 | Hir.Stmt.Assign(name, rhs) => {
                     typing(scope, rhs, Type.Unknown());
                     // 右辺から左辺の型を推論
-                    def destType = scope.resolveVar(name, Type.Unknown());
-                    _ = destType.unify(rhs.type)
+                    def dest = scope.resolveVar(name, Type.Unknown());
+                    _ = dest.type.unify(rhs.type)
                 }
                 | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Unknown())
                 | Hir.Stmt.Return(value) => {
                     typing(scope, value, Type.Unknown());
-                    scope.retType.unify(value.type) // 返り値でスコープの型を推論
+                    scope.retType().Map(t => t.unify(value.type)) // 返り値でスコープの型を推論
                 }
             }
         }

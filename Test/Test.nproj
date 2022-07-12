@@ -71,6 +71,9 @@
     <Compile Include="AstTest\Ast.Test.n">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="MirTest\MirTest.n">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Misc.n">
       <SubType>Code</SubType>
     </Compile>
@@ -78,9 +81,6 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="HirTest\HirTest.n">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="MirTest\MirTest.n">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="ParserTest\ParserTest.n">
@@ -91,9 +91,9 @@
   <ItemGroup>
     <Folder Include="CirTest\" />
     <Folder Include="HirTest\" />
-    <Folder Include="MirTest\" />
     <Folder Include="cases" />
     <Folder Include="AstTest" />
+    <Folder Include="MirTest" />
     <Folder Include="ParserTest\" />
     <Folder Include="Properties\" />
   </ItemGroup>

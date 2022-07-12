@@ -7,78 +7,50 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 
 using Atla.Lang;
 
 namespace Atla.Lang.Cir
 {
-    public variant Symbol: System.IEquatable[Symbol] {
-        | Method { name: string; argTypes: list[System.Type]; retType: System.Type }
-        | Class { name: string }
-        
-        public override GetHashCode() : int {
-            match (this) {
-                | Method(name, _, _) => name.GetHashCode()
-                | Class(name) => name.GetHashCode()
-            }
-        }
-        
-        public override Equals(other: object): bool implements System.IEquatable[Symbol].Equals {
-            match (this) {
-                | Method(name, argTypes, retType) => match (other) {
-                    | it is Method => it.name == name && it.argTypes.Zip(argTypes).All((a,b) => a == b) && it.retType == retType
-                    | _ => false
-                }
-                | Class(name) => match (other) {
-                    | it is Class => it.name == name
-                    | _ => false
-                }
-            }
-        }
-        
-        public override ToString(): string {
-            match (this) {
-                | Method(name, argTypes, retType) => {
-                    def args = if (argTypes.Length > 0) {
-                        argTypes.Tail.Fold(argTypes.First().ToString(), (v, acc) => acc + ", " + v.ToString())
-                    } else {
-                        ""
-                    };
-                    $"$name($args): $retType"
-                }
-                | Class(name) => name
-            }
-        }
-    }
+    public class Label {}
     
     public variant Ins {
         | LdLoc { index: int }
+        | StLoc { index: int }
         | LdArg { index: int }
         | LdStr { str: string }
-        | Call { method: Method }
-        | CallNative { method: MethodInfo }
+        | Call { method: MethodInfo }
         | Ret
         | Nop
+        | MarkLabel { label: Label }
+        | BrS { label: Label }
     }
     
     [Record]
     public class Method {
-        public sym: Symbol.Method;
+        public builder: MethodBuilder; // subtype of MethodInfo
         public body: list[Ins];
     }
     
     [Record]
-    public class Class {
-        public sym: Symbol.Class;
-        public baseClass: option[Class];
+    public class Type {
+        public builder: TypeBuilder;
         public methods: list[Method];
     }
     
     [Record]
     public class Module
     {
-        public name: string;
-        public mutable classes: list[Class];
+        public builder: ModuleBuilder;
+        public mutable types: list[Type];
         public mutable methods: list[Method];
+    }
+    
+    [Record]
+    public class Assembly
+    {
+        public builder: AssemblyBuilder;
+        public mutable modules: list[Module];
     }
 }

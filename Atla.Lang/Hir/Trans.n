@@ -2,38 +2,169 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 using Atla.Lang;
 using Atla.Lang.Hir;
 using Atla.Lang.Mir;
 
+// K正規化
 namespace Atla.Lang.Hir
 {
+    [Record]
+    public class KNormalExpr {
+        public proc: IEnumerable[Mir.Ins];
+        public res: Mir.Value;
+    }
+    
     public class Trans
     {
-        public trans(scope: Hir.Scope, hir: Hir.Expr): list[Mir.Ins] {
-            match (hir) {
-                | Hir.Expr.Apply(fn, args) => {
-                    // TODO: K正規化
-                    mutable mirArgs: list[Mir.Arg] = [];
-                    foreach (arg in args) {
-                        match (arg) {
-                            | Hir.Expr.String(s) => mirArgs += [Mir.Arg.Imm(Mir.Imm.String(s))]
-                            | Hir.Expr.Id(name) => mirArgs += [Mir.Arg.Id(Mir.Id(name, arg.type.pruned()))]
+        public getMethodInfo(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr): Result[MethodInfo] {
+            match (hir) { 
+                | fn is Hir.Expr.Fn => {
+                    // ラムダ式に名前を付けて定義
+                    def resMet = addMethod(mc, scope, fn);
+                    
+                    match (resMet) {
+                        | Result.Success(met) => {
+                            Result.Success(met.builder)
                         }
+                        | Result.Failure(e) => Result.Failure(e)
                     }
-                    match (fn) {
-                        | Hir.Expr.Id(name) => [Mir.Ins.Call(Mir.Id(name, fn.type.pruned()), mirArgs)]
-                        // TODO 関数式
+                }
+                | Hir.Expr.StaticMember(clsName, name) => {
+                    mutable ty = scope.resolveType(clsName);
+                    match (ty.pruned()) {
+                        | Type.Native(nt) => {
+                            def mi = nt.GetMethods().Find(methodInfo => {
+                                if (methodInfo.Name == name) {
+                                    match (hir.type.pruned()) {
+                                        | it is Type.Fn => it.canUnify(Type.Fn.from(methodInfo))
+                                        | _ => true
+                                    }
+                                } else {
+                                    false
+                                }
+                            });
+                            if (mi.IsSome) {
+                                Result.Success(mi.Value)
+                            } else {
+                                Result.Failure("$hir does not exist.")
+                            }
+                        }
+                        // TODO
                     }
                 }
             }
         }
         
+        public trans(mc: Mir.MethodContainer, frame: Mir.Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins]] {
+            match (hir) {
+                | Hir.Stmt.Expr(e) => trans(mc, frame, scope, e).map(a => a.proc)
+                | Hir.Stmt.Return(e) => {
+                    mutable retScope = scope;
+                    while (true) {
+                        match (retScope) {
+                            | it is Hir.Scope.Block => trans(mc, frame, scope, e).map(a => a.proc.Concat([Mir.Ins.Assign(it.retSymbol, a.res), Mir.Ins.Jump(it.endLabel)])) // ブロックスコープならReturnじゃなくてJumpする
+                            | it is Hir.Scope.Fn => trans(mc, frame, scope, e).map(a => a.proc.Concat([Mir.Ins.Ret(a.res)]))
+                            | _ => {}
+                        }
+                    }
+                    Result.Failure($"Could not find the return destination. $hir")
+                }
+                // TODO
+            }
+        }
+        
+        public trans(mc: Mir.MethodContainer, frame: Mir.Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormalExpr] {
+            match (hir) {
+                // TODO
+                | Hir.Expr.String(s) => Result.Success(KNormalExpr([], Mir.Value.Imm(Mir.Imm.String(s))))
+                | Hir.Expr.Id(name) => {
+                    def type = hir.type.pruned(); // TODO 毎回pruneしたくないのでキャッシュする
+                    def sym = scope.resolveVar(name, type);
+                    if (sym.isArg) {
+                        match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 名前が一致すればいい
+                            | Some(arg) => Result.Success(KNormalExpr([], Mir.Value.Sym(arg)))
+                            | None => Result.Failure($"Could not find $name in arguments.")
+                        }
+                    } else {
+                        match (NCollectionsExtensions.Find(frame.locs, arg => arg.name == sym.name)) { // 名前が一致すればいい
+                            | Some(loc) => Result.Success(KNormalExpr([], Mir.Value.Sym(loc)))
+                            | None => Result.Failure($"Could not find $name in locals.")
+                        }
+                    }
+                }
+                | Hir.Expr.Apply(fn, args) => {
+                    // 引数の評価順に注意
+                    // K正規化
+                    def kArgRs = args.Map(arg => trans(mc, frame, scope, arg));
+                    foreach (kArgR in kArgRs) {
+                        match (kArgR) {
+                            | Result.Failure(e) => return Result.Failure(e)
+                            | _ => ()
+                        }
+                    }
+                    def kArgs = kArgRs.Map(a => a.getResult().Value);
+                    
+                    match (getMethodInfo(mc, scope, fn)) {
+                        | Result.Success(m) => {
+                            def execArgs = kArgs.SelectMany(_.proc);
+                            def resArgs = kArgs.Map(_.res);
+                            
+                            def tmp = frame.declareTemp(m.ReturnType);
+                            
+                            Result.Success(KNormalExpr(execArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Mir.Value.Sym(tmp)))
+                        }
+                        | Result.Failure(e) => Result.Failure(e)
+                    }
+                }
+                | Hir.Expr.Block(blockScope, ss) => {
+                    // TODO Block.stmtsをlist[Stmt]にする
+                    
+                    // TODO 返り値がvoidの時
+                    
+                    // ブロックの帰り値を確保
+                    blockScope.retSymbol = Mir.Symbol($"_block_`$(frame.locs.Count())", blockScope.retType.ToSystemType());
+                    
+                    def stmts = ss.ToNList();
+                    def body = if (stmts.Length > 0) {
+                        match (stmts.Last()) {
+                            | Hir.Stmt.Expr(e) => {
+                                // 最後が式文のとき
+                                if (stmts.Length > 1) {
+                                    // 最後の式以外を変換
+                                    mutable res = trans(mc, frame, blockScope, stmts.Head);
+                                    foreach (s in stmts.Tail.Take(stmts.Length - 2)) {
+                                        res = res.bind(xs => trans(mc, frame, blockScope, s).map(ys => xs.Concat(ys)));
+                                    }
+                                    // 最後の式の評価結果をblockの帰り値に代入
+                                    def rc = trans(mc, frame, blockScope, e);
+                                    res.bind(xs => rc.map(c => xs.Concat(c.proc).Concat([Mir.Ins.Assign(blockScope.retSymbol, c.res)])))
+                                } else {
+                                    // 式の評価結果をblockの帰り値に代入
+                                    trans(mc, frame, blockScope, e).map(xs => xs.proc.Concat([Mir.Ins.Assign(blockScope.retSymbol, xs.res)]))
+                                }
+                            }
+                            | _ => {
+                                stmts.Tail.Fold(trans(mc, frame, blockScope, stmts.Head), (v, acc) => acc.bind(xs => trans(mc, frame, blockScope, v).map(ys => xs.Concat(ys))))
+                            }
+                        }
+                    } else {
+                        Result.Success([]) // TODO unitを返す
+                    }
+                    
+                    body.bind(b => Result.Success(KNormalExpr(b, Mir.Value.Sym(blockScope.retSymbol))))
+                }
+                | Hir.Expr.Fn => throw Exception("")
+            }
+        }
+         
         public trans(import: Hir.Import): void {
             // TODO
             //| Hir.Decl.Import(name) => {
@@ -44,23 +175,44 @@ namespace Atla.Lang.Hir
             //}
         }
         
-        public trans(scope: Hir.Scope, name: string, hir: Hir.Expr): list[Mir.Decl] {
-            mutable rhs = trans(scope, hir);
-            
-            match (hir.type.pruned()) {
-                | it is Type.Fn => [Mir.Decl.Fn(Mir.Id(name, it), rhs)]
-            }
+        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr.Fn): Result[Mir.Method] {
+            def name = $"_func_`$(scope.varTable.Count())";
+            scope.declareVar(name, hir.type);
+            addMethod(mc, scope, name, hir);
         }
         
-        public trans(hir: Hir.Module): Mir.Module {
-            mutable decls: list[Mir.Decl] = [];
+        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, name: string, hir: Hir.Expr.Fn): Result[Mir.Method] {
+            def type = hir.type.pruned();
+            match (type) {
+                | Type.Fn => ()
+                | _ => return Result.Failure($"$hir is $type, it should be a function.")
+            }
+            def fnType = type :> Type.Fn;
+            
+            def method = mc.defineMethod(name, fnType.args.Map(_.ToSystemType()), fnType.ret.ToSystemType());
+            match (trans(mc, method.frame, hir.scope, hir.body)) {
+                | Result.Success(proc) => method.body = proc.proc.ToList().ToNList(); // 実行だけでいいはず proc.resは使わない
+                | Result.Failure(e) => return Result.Failure(e);
+            }
+            
+            Result.Success(method)
+        }
+        
+        public generateModule(asm: Mir.Assembly, hir: Hir.Module, fileName: string): Result[Mir.Module] {
+            def mod = Mir.Module(asm, hir.name, fileName);
+            
+            // TODO type definitions
+            
             foreach ((name, overloads) in hir.members.KeyValuePairs) {
                 foreach (overload in overloads) {
-                    decls += trans(hir.scope, name, overload)
+                    match (addMethod(mod, hir.scope, name, overload)) {
+                        | Result.Failure(e) => return Result.Failure(e);
+                        | _ => {}
+                    }
                 }
             }
           
-            Mir.Module(hir.name, decls)
+            Result.Success(mod)
         }
     }
 }

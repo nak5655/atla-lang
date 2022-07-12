@@ -2,6 +2,7 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
@@ -14,25 +15,9 @@ namespace Atla.Lang.Cir
     public class Emit
     {
         parent: option[Emit];
-        mutable typeTable: Hashtable[Cir.Symbol.Class, System.Type] = Hashtable();
-        mutable methodTable: Hashtable[Cir.Symbol.Method, MethodInfo] = Hashtable();
         
         public this(parent: option[Emit]) {
             this.parent = parent;
-        }
-        
-        resolve(sym: Cir.Symbol.Class): System.Type { 
-            if (typeTable.ContainsKey(sym))
-                typeTable.Get(sym).Value
-            else
-                parent.Value.resolve(sym)
-        }
-        
-        resolve(sym: Cir.Symbol.Method): MethodInfo {
-            if (methodTable.ContainsKey(sym))
-                methodTable.Get(sym).Value
-            else
-                parent.Value.resolve(sym)
         }
         
         public emit(gen: ILGenerator, cir: Cir.Ins): void {
@@ -56,61 +41,49 @@ namespace Atla.Lang.Cir
                     }
                 }
                 | Cir.Ins.LdStr(str) => gen.Emit(OpCodes.Ldstr, str)
-                | Cir.Ins.Call(method) => gen.Emit(OpCodes.Call, resolve(method.sym))
-                | Cir.Ins.CallNative(method) => gen.Emit(OpCodes.Call, method)
+                | Cir.Ins.Call(method) => gen.Emit(OpCodes.Call, method)
                 | Cir.Ins.Ret => gen.Emit(OpCodes.Ret)
                 | Cir.Ins.Nop => gen.Emit(OpCodes.Nop)
             }
         }
         
         
-        public emit(builder: TypeBuilder, cir: Cir.Method): void {
-            def met = builder.DefineMethod(cir.sym.name, MethodAttributes.Public, cir.sym.retType, cir.sym.argTypes.ToArray());
-            methodTable.Add(cir.sym, met);
-            
-            def gen = met.GetILGenerator();
+        public emit(cir: Cir.Method): void {
+            def gen = cir.builder.GetILGenerator();
             foreach (ins in cir.body) {
                 emit(gen, ins);
             }
         }
         
-        public emit(builder: ModuleBuilder, cir: Cir.Method): MethodInfo {
-            def met = builder.DefineGlobalMethod(cir.sym.name, MethodAttributes.Public | MethodAttributes.Static, cir.sym.retType, cir.sym.argTypes.ToArray());
-            methodTable.Add(cir.sym, met);
-            
-            def gen = met.GetILGenerator();
-            foreach (ins in cir.body) {
-                emit(gen, ins);
-            }
-            met
-        }
-        
-        public emit(builder: ModuleBuilder, cir: Cir.Class): void {
-            def baseClass = cir.baseClass.Map(c => resolve(c.sym)).WithDefault(typeof(System.Object));
-            def typ = builder.DefineType(cir.sym.name, TypeAttributes.Public, baseClass);
-            typeTable.Add(cir.sym, typ);
-            
+        public emit(cir: Cir.Type): void {
             foreach (method in cir.methods) {
-                emit(typ, method);
+                emit(method);
             }
         }
         
-        public emit(builder: AssemblyBuilder, fileName: string, cir: Cir.Module) : void {
-            def mod = builder.DefineDynamicModule(cir.name, fileName);
-            
-            foreach (cls in cir.classes) {
-                emit(mod, cls);
+        public emit(cir: Cir.Module) : void {
+            foreach (cls in cir.types) {
+                emit(cls);
             }
             
-            foreach (method in cir.methods) {
-                def met = emit(mod, method);
-                
-                // TODO: check arg type and ret type
-                when (method.sym.name == "main") {
-                    builder.SetEntryPoint(met);
+            cir.builder.CreateGlobalFunctions();
+        }
+        
+        public emit(cir: Cir.Assembly) : void {
+            
+            // TODO: check arg type and ret type
+            mutable foundMain = false;
+            foreach (mod in cir.modules) {
+                foreach (method in mod.methods) {
+                   when (method.builder.Name == "main") {
+                        cir.builder.SetEntryPoint(method.builder);
+                        foundMain = true;
+                        break;
+                    }
                 }
+                when (foundMain)
+                    break;
             }
-            mod.CreateGlobalFunctions();
         }
     }
 }

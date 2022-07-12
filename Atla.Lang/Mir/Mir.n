@@ -6,69 +6,123 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 
-/**
-CPU命令に近い形式
-LLVM IR と同等
-型確定済み
-変数名なし　レジスタ割り当て済み
-K正規化済み
-**/
+using System.Reflection;
+using System.Reflection.Emit;
+
+// ネストした関数やスコープを除去済み
+// 関数のローカル変数のスタック位置が確定 -> 変数名を削除して添え字でアクセスできる
+// 関数や型はMethodInfoとSystem.Typeで参照する
+// K正規化済み
 namespace Atla.Lang.Mir
 {
-    [Record]
-    public class Id: System.IComparable[Id], System.IEquatable[Id]
-    {
-        public name: string;
-        public type: Type;
-        
-        public override GetHashCode() : int {
-            name.GetHashCode()
-        }
-        
-        public override Equals(other: object): bool implements System.IEquatable[Id].Equals {
-            if (other is Id)
-                this.name == (other :> Id).name && Equals(this.type, (other :> Id).type)
-            else
-                false
-        }
-        
-        public CompareTo(other : Id) : int {
-          def res = string.CompareOrdinal(name, other.name);
-          if (res == 0)
-          {
-              type.GetHashCode() - other.type.GetHashCode()
-          }
-          else
-              res
-        }
-    }
-    
-    public variant Imm
-    {
+    public variant Imm {
+        | Int { value: int }
         | String { value: string }
     }
     
-    public variant Arg {
-        | Id { value: Atla.Lang.Mir.Id }
-        | Imm { value: Atla.Lang.Mir.Imm }
+    [Record]
+    public class Symbol {
+        public name: string;
+        public type: System.Type;
+    }
+    
+    public variant Value {
+        | Imm { value: Mir.Imm }
+        | Sym { value: Symbol }
     }
     
     public variant Ins {
-        | Call { func: Id; args: list[Arg] }
-        | CallNative { method: MethodInfo; args: list[Arg] }
-        | Ret
+        | Assign {
+            name: Symbol;
+            value: Value;
+        }
+        | CallAssign {
+            name: Symbol;
+            method: MethodInfo;
+            args: list[Value];
+        }
+        | Ret {
+            value: Value;
+        }
+        | Jump {
+            label: Label;
+        }
+        | Label
     }
     
-    public variant Decl {
-        | Fn { id: Id; body: list[Ins] }
-    }
-    
-    [Record]
-    public class Module
-    {
+    public class Method {
         public name: string;
-        public mutable decls: list[Decl];
+        public builder: MethodBuilder; // subclass of MethodInfo
+        public mutable body: list[Ins];
+        
+        public frame: Frame = Frame();
+        
+        public this(ty: Type, name: string, args: list[System.Type], ret: System.Type) {
+            this.name = name;
+            builder = ty.builder.DefineMethod(name, MethodAttributes.Public, ret, args.ToArray());
+        }
+        
+        public this(mod: Module, name: string, args: list[System.Type], ret: System.Type) {
+            this.name = name;
+            builder = mod.builder.DefineGlobalMethod(name, MethodAttributes.Public | MethodAttributes.Static, ret, args.ToArray());
+        }
+    }
+    
+    public interface MethodContainer {
+        defineMethod(name: string, args: list[System.Type], ret: System.Type): Method
+    }
+    
+    public class Type: MethodContainer {
+        public builder: TypeBuilder;
+        
+        public methods: List[Method];
+        
+        public this(mod: Module, name: string) {
+            this.builder = mod.builder.DefineType(name, TypeAttributes.Public, typeof(System.Object));
+            this.methods = List();
+        }
+        
+        public defineMethod(name: string, args: list[System.Type], ret: System.Type): Method {
+            def method = Method(this, name, args, ret);
+            methods.Add(method);
+            method
+        }
+    }
+    
+    public class Module: MethodContainer {
+        public builder: ModuleBuilder;
+        
+        public methods: List[Method];
+        
+        public this(asm: Assembly, name: string, fileName: string) {
+            this.builder = asm.builder.DefineDynamicModule(name, fileName);
+            this.methods = List();
+        }
+        
+        public defineMethod(name: string, args: list[System.Type], ret: System.Type): Method {
+            def method = Method(this, name, args, ret);
+            methods.Add(method);
+            method
+        }
+    }
+    
+    public class Assembly {
+        public name: AssemblyName;
+        public builder: AssemblyBuilder;
+        
+        public modules: Hashtable[string, Module];
+        
+        public this(name: string) {
+            this.name = AssemblyName(name);
+            this.builder = AssemblyBuilder.DefineDynamicAssembly(this.name, AssemblyBuilderAccess.Save);
+            this.modules = Hashtable();
+        }
+        
+        public DefineModule(name: string, fileName: string): Module {
+            def mod = Module(this, name, fileName);
+            modules.Add(name, mod);
+            mod
+        }
     }
 }

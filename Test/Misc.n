@@ -14,5 +14,9 @@ namespace Test
         public static readCase(fileName: string): string {
             File.ReadAllText(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"cases\\$(fileName)"))
         }
+        
+        public static tempFile(name: string): string {
+            Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"temp\\$(name)")
+        }
     }
 }
