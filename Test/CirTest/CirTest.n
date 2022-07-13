@@ -14,6 +14,15 @@ namespace Test.CirTest
     [TestFixture]
     class CirTest
     {
+        [Test]
+        public CirEasyTest(): void {
+            def asm = Atla.Lang.Mir.Assembly("Test");
+            
+            def code = Misc.readCase("hello.atla");
+            def cir = Atla.Lang.Misc.compileToCir(asm, "main", code);
+            
+            Assert.AreEqual(1, cir.methods.Count());
+        }
         //[Test]
         //public symbolEqualityTest(): void {
         //    def a = Symbol.Method("aaa", [typeof(System.String)], typeof(void));

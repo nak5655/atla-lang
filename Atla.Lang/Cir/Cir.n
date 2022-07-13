@@ -19,7 +19,9 @@ namespace Atla.Lang.Cir
         | LdLoc { index: int }
         | StLoc { index: int }
         | LdArg { index: int }
+        | StArg { index: int }
         | LdStr { str: string }
+        | LdInt32 { value: int }
         | Call { method: MethodInfo }
         | Ret
         | Nop

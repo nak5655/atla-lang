@@ -2,6 +2,7 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
@@ -46,6 +47,20 @@ namespace Atla.Lang
                 | Success(r) => f(r)
                 | Failure(e) => Result.Failure(e)
             }
+        }
+    }
+    
+    public module ResultExtensions {
+        public seq[A](this vs: IEnumerable[Result[A]]): Result[IEnumerable[A]] {
+            def res = List();
+            foreach (v in vs) {
+                match (v) {
+                    | Success(r) => res.Add(r)
+                    | Failure(e) => return Result.Failure(e)
+                }
+            }
+            
+            Result.Success(res)
         }
     }
 }

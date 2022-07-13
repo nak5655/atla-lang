@@ -98,10 +98,12 @@ namespace Atla.Lang.Mir
     public class Module: MethodContainer {
         public builder: ModuleBuilder;
         
+        public types: List[Type];
         public methods: List[Method];
         
         public this(asm: Assembly, name: string, fileName: string) {
             this.builder = asm.builder.DefineDynamicModule(name, fileName);
+            this.types = List();
             this.methods = List();
         }
         

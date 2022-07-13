@@ -7,9 +7,58 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Atla.Lang.Cir;
+
 namespace Atla.Lang.Mir
 {
     public class Trans
     {
+        public load(frame: Mir.Frame, mir: Mir.Value): Result[IEnumerable[Cir.Ins]] {
+            match (mir) {
+                | Mir.Value.Imm(imm) => match (imm) {
+                    | Mir.Imm.Int(v) => Result.Success([Cir.Ins.LdInt32(v)])
+                    | Mir.Imm.String(s) => Result.Success([Cir.Ins.LdStr(s)])
+                }
+                | Mir.Value.Sym(sym) => match (frame.resolve(sym)) {
+                    | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.LdLoc(i)])
+                    | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArg(i)])
+                    | _ => Result.Failure($"Symbol $sym is invalid.") 
+                }
+            }
+        }
+        
+        public trans(frame: Mir.Frame, mir: Mir.Ins): Result[IEnumerable[Cir.Ins]] {
+            match (mir) {
+                | Mir.Ins.Assign(sym, rhs) => match (frame.resolve(sym)) {
+                    | Some(FramePosition.Loc(i)) => load(frame, rhs).map(vs => vs.Concat([Cir.Ins.StLoc(i)]))
+                    | Some(FramePosition.Arg(i)) => load(frame, rhs).map(vs => vs.Concat([Cir.Ins.StArg(i)]))
+                    | _ => Result.Failure($"Symbol $sym is invalid.")
+                }
+                | Mir.Ins.Call(mi, args) => {
+                    args.Map(a => load(frame, a)).seq().map(vs => vs.flatten().Concat([Cir.Ins.Call(mi)]))
+                }
+            }
+        }
+        
+        public trans(mir: Mir.Method): Result[Cir.Method] {
+            def body = mir.body.Map(i => trans(mir.frame, i)).seq().map(r => r.flatten());
+            body.map(b => Cir.Method(mir.builder, b.ToList().ToNList()))
+        }
+        
+        public trans(mir: Mir.Type): Result[Cir.Type] {
+            mir.methods.Map(m => trans(m)).seq().map(ms => Cir.Type(mir.builder, ms.ToList().ToNList()))
+        }
+        
+        public trans(mir: Mir.Module): Result[Cir.Module] {
+            mir.types.Map(t => trans(t)).seq().bind(ts => {
+                mir.methods.Map(m => trans(m)).seq().map(ms => {
+                    Cir.Module(mir.builder, ts.ToList().ToNList(), ms.ToList().ToNList())
+                })
+            })
+        }
+        
+        public trans(mir: Mir.Assembly): Result[Cir.Assembly] {
+            mir.modules.Values.Map(m => trans(m)).seq().map(ms => Cir.Assembly(mir.builder, ms.ToList().ToNList()))
+        }
     }
 }

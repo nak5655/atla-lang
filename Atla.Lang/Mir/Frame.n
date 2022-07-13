@@ -2,6 +2,7 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
@@ -12,6 +13,11 @@ using System.Reflection.Emit;
 
 namespace Atla.Lang.Mir
 {
+    public variant FramePosition {
+        | Arg { index: int }
+        | Loc { index: int }
+    }
+    
     public class Frame
     {
         public args: List[Symbol] = List();
@@ -26,5 +32,18 @@ namespace Atla.Lang.Mir
             locs.Add(sym);
             sym
         }
+        
+        public resolve(symbol: Symbol): option[FramePosition] {
+            for (mutable i = 0; i < locs.Count(); i++) {
+                when (locs[i].Equals(symbol))
+                    return Some(FramePosition.Loc(i))
+            }
+            for (mutable i = 0; i < args.Count(); i++) {
+                when (args[i].Equals(symbol))
+                    return Some(FramePosition.Arg(i))
+            }
+            
+            None()
+        } 
     }
 }
