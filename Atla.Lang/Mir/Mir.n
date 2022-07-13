@@ -37,12 +37,17 @@ namespace Atla.Lang.Mir
             name: Symbol;
             value: Value;
         }
+        | Call {
+            method: MethodInfo;
+            args: list[Value];
+        }
         | CallAssign {
             name: Symbol;
             method: MethodInfo;
             args: list[Value];
         }
-        | Ret {
+        | Ret
+        | RetValue {
             value: Value;
         }
         | Jump {

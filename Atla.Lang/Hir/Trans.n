@@ -19,7 +19,7 @@ namespace Atla.Lang.Hir
     [Record]
     public class KNormalExpr {
         public proc: IEnumerable[Mir.Ins];
-        public res: Mir.Value;
+        public res: option[Mir.Value]; // voidのときnone
     }
     
     public class Trans
@@ -70,8 +70,19 @@ namespace Atla.Lang.Hir
                     mutable retScope = scope;
                     while (true) {
                         match (retScope) {
-                            | it is Hir.Scope.Block => trans(mc, frame, scope, e).map(a => a.proc.Concat([Mir.Ins.Assign(it.retSymbol, a.res), Mir.Ins.Jump(it.endLabel)])) // ブロックスコープならReturnじゃなくてJumpする
-                            | it is Hir.Scope.Fn => trans(mc, frame, scope, e).map(a => a.proc.Concat([Mir.Ins.Ret(a.res)]))
+                            | it is Hir.Scope.Block => trans(mc, frame, scope, e).map(a => {
+                                 // ブロックスコープならReturnじゃなくてJumpする
+                                match (a.res) {
+                                    | None => a.proc.Concat([Mir.Ins.Jump(it.endLabel)])
+                                    | Some(v) => a.proc.Concat([Mir.Ins.Assign(it.retSymbol, v), Mir.Ins.Jump(it.endLabel)])
+                                }
+                            })
+                            | it is Hir.Scope.Fn => trans(mc, frame, scope, e).map(a => {
+                                match (a.res) {
+                                    | Some(v) => a.proc.Concat([Mir.Ins.RetValue(v)])
+                                    | _ => a.proc.Concat([Mir.Ins.Ret()])
+                                }
+                            })
                             | _ => {}
                         }
                     }
@@ -84,18 +95,18 @@ namespace Atla.Lang.Hir
         public trans(mc: Mir.MethodContainer, frame: Mir.Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormalExpr] {
             match (hir) {
                 // TODO
-                | Hir.Expr.String(s) => Result.Success(KNormalExpr([], Mir.Value.Imm(Mir.Imm.String(s))))
+                | Hir.Expr.String(s) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.String(s)))))
                 | Hir.Expr.Id(name) => {
                     def type = hir.type.pruned(); // TODO 毎回pruneしたくないのでキャッシュする
                     def sym = scope.resolveVar(name, type);
                     if (sym.isArg) {
                         match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 名前が一致すればいい
-                            | Some(arg) => Result.Success(KNormalExpr([], Mir.Value.Sym(arg)))
+                            | Some(arg) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(arg))))
                             | None => Result.Failure($"Could not find $name in arguments.")
                         }
                     } else {
                         match (NCollectionsExtensions.Find(frame.locs, arg => arg.name == sym.name)) { // 名前が一致すればいい
-                            | Some(loc) => Result.Success(KNormalExpr([], Mir.Value.Sym(loc)))
+                            | Some(loc) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(loc))))
                             | None => Result.Failure($"Could not find $name in locals.")
                         }
                     }
@@ -115,11 +126,15 @@ namespace Atla.Lang.Hir
                     match (getMethodInfo(mc, scope, fn)) {
                         | Result.Success(m) => {
                             def execArgs = kArgs.SelectMany(_.proc);
-                            def resArgs = kArgs.Map(_.res);
+                            def resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
                             
-                            def tmp = frame.declareTemp(m.ReturnType);
+                            if (m.ReturnType == typeof(void)) {
+                                Result.Success(KNormalExpr(execArgs.Concat([Mir.Ins.Call(m, resArgs)]), None()))
+                            } else {
+                                def tmp = frame.declareTemp(m.ReturnType);
                             
-                            Result.Success(KNormalExpr(execArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Mir.Value.Sym(tmp)))
+                                Result.Success(KNormalExpr(execArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Some(Mir.Value.Sym(tmp))))
+                            }
                         }
                         | Result.Failure(e) => Result.Failure(e)
                     }
@@ -145,10 +160,20 @@ namespace Atla.Lang.Hir
                                     }
                                     // 最後の式の評価結果をblockの帰り値に代入
                                     def rc = trans(mc, frame, blockScope, e);
-                                    res.bind(xs => rc.map(c => xs.Concat(c.proc).Concat([Mir.Ins.Assign(blockScope.retSymbol, c.res)])))
+                                    res.bind(xs => rc.map(c => {
+                                        match (c.res) {
+                                            | None => xs.Concat(c.proc)
+                                            | Some(v) => xs.Concat(c.proc).Concat([Mir.Ins.Assign(blockScope.retSymbol, v)])
+                                        }
+                                    }))
                                 } else {
                                     // 式の評価結果をblockの帰り値に代入
-                                    trans(mc, frame, blockScope, e).map(xs => xs.proc.Concat([Mir.Ins.Assign(blockScope.retSymbol, xs.res)]))
+                                    trans(mc, frame, blockScope, e).map(xs => {
+                                        match (xs.res) {
+                                            | None => xs.proc
+                                            | Some(v) => xs.proc.Concat([Mir.Ins.Assign(blockScope.retSymbol, v)])
+                                        }
+                                    })
                                 }
                             }
                             | _ => {
@@ -159,7 +184,11 @@ namespace Atla.Lang.Hir
                         Result.Success([]) // TODO unitを返す
                     }
                     
-                    body.bind(b => Result.Success(KNormalExpr(b, Mir.Value.Sym(blockScope.retSymbol))))
+                    if (blockScope.retSymbol.type == typeof(void)) {
+                        body.bind(b => Result.Success(KNormalExpr(b, None())))
+                    } else {
+                        body.bind(b => Result.Success(KNormalExpr(b, Some(Mir.Value.Sym(blockScope.retSymbol)))))
+                    }
                 }
                 | Hir.Expr.Fn => throw Exception("")
             }

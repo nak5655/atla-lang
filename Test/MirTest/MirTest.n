@@ -24,6 +24,8 @@ namespace Test.MirTest
             def mir = Atla.Lang.Misc.compileToMir(asm, "main", code);
             
             Assert.AreEqual(1, mir.methods.Count());
+            Assert.AreEqual(1, mir.methods.First().body.Length);
+            Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
     }
 }
