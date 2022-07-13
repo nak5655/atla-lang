@@ -16,13 +16,18 @@ namespace Test.CirTest
     {
         [Test]
         public CirEasyTest(): void {
-            def asm = Atla.Lang.Mir.Assembly("Test");
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest.exe"));
             
             def code = Misc.readCase("hello.atla");
-            def cir = Atla.Lang.Misc.compileToCir(asm, "main", code);
+            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
             
-            Assert.AreEqual(1, cir.methods.Count());
+            def cir = Atla.Lang.Misc.compile(Atla.Lang.Misc.compile(asm));
+            
+            Assert.AreEqual(1, cir.modules.First().methods.Count());
+            
+            Atla.Lang.Cir.Emit().emit(cir);
         }
+        
         //[Test]
         //public symbolEqualityTest(): void {
         //    def a = Symbol.Method("aaa", [typeof(System.String)], typeof(void));

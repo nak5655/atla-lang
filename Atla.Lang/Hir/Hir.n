@@ -228,11 +228,17 @@ namespace Atla.Lang.Hir
     
     public class Assembly {
         public name: string;
+        public fileName: string;
         public modules: Hashtable[string, Module];
         
-        public this(name: string) {
+        public scope: Scope.Global; // TODO Scope.Assembly? 外部アセンブリへの依存の扱いをどうするか決めてない
+        
+        public this(name: string, fileName: string) {
             this.name = name;
+            this.fileName = fileName;
             this.modules = Hashtable();
+            
+            scope = Scope.Global();
         }
         
     }

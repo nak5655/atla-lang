@@ -6,6 +6,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 using System.Reflection;
 using System.Reflection.Emit;
@@ -101,8 +102,8 @@ namespace Atla.Lang.Mir
         public types: List[Type];
         public methods: List[Method];
         
-        public this(asm: Assembly, name: string, fileName: string) {
-            this.builder = asm.builder.DefineDynamicModule(name, fileName);
+        public this(asm: Assembly, name: string) {
+            this.builder = asm.builder.DefineDynamicModule(name, asm.fileName);
             this.types = List();
             this.methods = List();
         }
@@ -116,20 +117,16 @@ namespace Atla.Lang.Mir
     
     public class Assembly {
         public name: AssemblyName;
+        public fileName: string;
         public builder: AssemblyBuilder;
         
         public modules: Hashtable[string, Module];
         
-        public this(name: string) {
+        public this(name: string, filePath: string) {
             this.name = AssemblyName(name);
-            this.builder = AssemblyBuilder.DefineDynamicAssembly(this.name, AssemblyBuilderAccess.Save);
+            this.fileName = System.IO.Path.GetFileName(filePath);
+            this.builder = Thread.GetDomain().DefineDynamicAssembly(this.name, AssemblyBuilderAccess.Save, System.IO.Path.GetDirectoryName(filePath));
             this.modules = Hashtable();
-        }
-        
-        public DefineModule(name: string, fileName: string): Module {
-            def mod = Module(this, name, fileName);
-            modules.Add(name, mod);
-            mod
         }
     }
 }

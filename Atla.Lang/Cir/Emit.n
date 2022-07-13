@@ -14,12 +14,6 @@ namespace Atla.Lang.Cir
 {
     public class Emit
     {
-        parent: option[Emit];
-        
-        public this(parent: option[Emit]) {
-            this.parent = parent;
-        }
-        
         public emit(gen: ILGenerator, cir: Cir.Ins): void {
             match (cir) {
                 | Cir.Ins.LdLoc(index) => {
@@ -31,6 +25,15 @@ namespace Atla.Lang.Cir
                         | _ => gen.Emit(OpCodes.Ldloc, index)
                     }
                 }
+                | Cir.Ins.StLoc(index) => {
+                    match (index) {
+                        | 0 => gen.Emit(OpCodes.Stloc_0)
+                        | 1 => gen.Emit(OpCodes.Stloc_1)
+                        | 2 => gen.Emit(OpCodes.Stloc_2)
+                        | 3 => gen.Emit(OpCodes.Stloc_3)
+                        | _ => gen.Emit(OpCodes.Stloc, index)
+                    }
+                }
                 | Cir.Ins.LdArg(index) => {
                     match (index) {
                         | 0 => gen.Emit(OpCodes.Ldarg_0)
@@ -40,10 +43,25 @@ namespace Atla.Lang.Cir
                         | _ => gen.Emit(OpCodes.Ldarg, index)
                     }
                 }
+                | Cir.Ins.StArg(index) => gen.Emit(OpCodes.Starg, index)
+                | Cir.Ins.LdInt32(value) => match (value) {
+                    | 0 => gen.Emit(OpCodes.Ldc_I4_0)
+                    | 1 => gen.Emit(OpCodes.Ldc_I4_1)
+                    | 2 => gen.Emit(OpCodes.Ldc_I4_2)
+                    | 3 => gen.Emit(OpCodes.Ldc_I4_3)
+                    | 4 => gen.Emit(OpCodes.Ldc_I4_4)
+                    | 5 => gen.Emit(OpCodes.Ldc_I4_5)
+                    | 6 => gen.Emit(OpCodes.Ldc_I4_6)
+                    | 7 => gen.Emit(OpCodes.Ldc_I4_7)
+                    | 8 => gen.Emit(OpCodes.Ldc_I4_8)
+                    | _ => gen.Emit(OpCodes.Ldc_I4, value)
+                }
                 | Cir.Ins.LdStr(str) => gen.Emit(OpCodes.Ldstr, str)
                 | Cir.Ins.Call(method) => gen.Emit(OpCodes.Call, method)
                 | Cir.Ins.Ret => gen.Emit(OpCodes.Ret)
                 | Cir.Ins.Nop => gen.Emit(OpCodes.Nop)
+                | Cir.Ins.MarkLabel(label) => gen.MarkLabel(label.get(gen))
+                | Cir.Ins.BrS(label) => gen.Emit(OpCodes.Br_S, label.get(gen))
             }
         }
         
@@ -59,17 +77,25 @@ namespace Atla.Lang.Cir
             foreach (method in cir.methods) {
                 emit(method);
             }
+            
+            _ = cir.builder.CreateType();
         }
         
         public emit(cir: Cir.Module) : void {
             foreach (cls in cir.types) {
                 emit(cls);
             }
+            foreach (met in cir.methods) {
+                emit(met);
+            }
             
             cir.builder.CreateGlobalFunctions();
         }
         
         public emit(cir: Cir.Assembly) : void {
+            foreach (mod in cir.modules) {
+                emit(mod);
+            }
             
             // TODO: check arg type and ret type
             mutable foundMain = false;
@@ -84,6 +110,8 @@ namespace Atla.Lang.Cir
                 when (foundMain)
                     break;
             }
+            
+            cir.builder.Save(cir.fileName);
         }
     }
 }

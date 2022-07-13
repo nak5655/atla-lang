@@ -257,7 +257,19 @@ namespace Atla.Lang
             match (this.pruned()) {
                 // TODO
                 | Native(t) => t
-                | Generics(b, ps) => b.ToSystemType()
+                | Generics(b, ps) => {
+                    def _base = b.ToSystemType();
+                    if (_base.IsGenericTypeDefinition)
+                        _base.MakeGenericType(ps.Map(_.ToSystemType()).ToArray())
+                    else if (_base == typeof(System.Array)) { // TODO typeofは遅い? キャッシュしたほうがいいかも?
+                        if (ps.Length == 1)
+                            ps.First().ToSystemType().MakeArrayType()
+                        else
+                            throw Exception("Could not make array type of plural types.") // TODO Result[System.Type]
+                    } else {
+                        throw Exception("Notimplemented") // TODO
+                    }
+                }
             }
         }
         

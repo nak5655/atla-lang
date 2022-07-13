@@ -18,10 +18,11 @@ namespace Test.MirTest
     {
         [Test]
         public MirEasyTest(): void {
-            def asm = Atla.Lang.Mir.Assembly("Test");
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
             
             def code = Misc.readCase("hello.atla");
-            def mir = Atla.Lang.Misc.compileToMir(asm, "main", code);
+            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def mir = Atla.Lang.Misc.compile(asm).modules["main"];
             
             Assert.AreEqual(1, mir.methods.Count());
             Assert.AreEqual(1, mir.methods.First().body.Length);

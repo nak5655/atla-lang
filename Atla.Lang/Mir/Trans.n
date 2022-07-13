@@ -42,7 +42,13 @@ namespace Atla.Lang.Mir
         
         public trans(mir: Mir.Method): Result[Cir.Method] {
             def body = mir.body.Map(i => trans(mir.frame, i)).seq().map(r => r.flatten());
-            body.map(b => Cir.Method(mir.builder, b.ToList().ToNList()))
+            body.map(b => {
+                if (b.Count() > 0 && !(b.Last() is Cir.Ins.Ret)) {
+                    Cir.Method(mir.builder, b.ToList().ToNList() + [Cir.Ins.Ret()]) // voidを返す関数でも最後にretが必要
+                } else {
+                    Cir.Method(mir.builder, b.ToList().ToNList())
+                }
+            })
         }
         
         public trans(mir: Mir.Type): Result[Cir.Type] {
@@ -58,7 +64,7 @@ namespace Atla.Lang.Mir
         }
         
         public trans(mir: Mir.Assembly): Result[Cir.Assembly] {
-            mir.modules.Values.Map(m => trans(m)).seq().map(ms => Cir.Assembly(mir.builder, ms.ToList().ToNList()))
+            mir.modules.Values.Map(m => trans(m)).seq().map(ms => Cir.Assembly(mir.fileName, mir.builder, ms.ToList().ToNList()))
         }
     }
 }

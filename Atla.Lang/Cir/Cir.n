@@ -13,7 +13,21 @@ using Atla.Lang;
 
 namespace Atla.Lang.Cir
 {
-    public class Label {}
+    public class Label {
+        mutable label: option[System.Reflection.Emit.Label];
+        
+        public this() {
+            label = None();
+        }
+        
+        public get(gen: ILGenerator): System.Reflection.Emit.Label {
+            when (label.IsNone) {
+                label = Some(gen.DefineLabel());
+            }
+            
+            label.Value
+        }
+    }
     
     public variant Ins {
         | LdLoc { index: int }
@@ -26,7 +40,7 @@ namespace Atla.Lang.Cir
         | Ret
         | Nop
         | MarkLabel { label: Label }
-        | BrS { label: Label }
+        | BrS { label: Label } // jump
     }
     
     [Record]
@@ -52,6 +66,7 @@ namespace Atla.Lang.Cir
     [Record]
     public class Assembly
     {
+        public fileName: string;
         public builder: AssemblyBuilder;
         public mutable modules: list[Module];
     }
