@@ -61,7 +61,12 @@ namespace Atla.Lang.Parser
         public get(): option[Token] {
             match (parent.get()) {
                 | Some(t) => {
-                    if (t.span.lo.col <= openAt.col) None() else Some(t)
+                    if (t.span.lo.line == openAt.line && t.span.lo.col <= openAt.col) // openしたTokenも含める
+                        Some(t)
+                    else if (t.span.lo.col <= openAt.col)
+                        None()
+                    else
+                        Some(t)
                 }
                 | _ => None()
             }
@@ -76,42 +81,255 @@ namespace Atla.Lang.Parser
         }
     }
     
-    public class InlineInput: Input[Token] {
-        public parent: Input[Token];
-        openBy: Token;
-        openAt: Position;
-        
-        public this(parent: Input[Token], openBy: Token) {
-            this.parent = parent;
-            this.openBy = openBy;
-            this.openAt = openBy.span.lo;
-        }
-        
-        public get(): option[Token] {
-            match (parent.get()) {
-                | Some(t) => {
-                    if (t.span.lo.line == openAt.line && t.span.hi.line == openAt.line) Some(t) else None()
-                }
-                | _ => None()
-            }
-        }
-        
-        public position(): option[Span] {
-            parent.position() :> option[Span]
-        }
-        
-        public next(): Input[Token] {
-            InlineInput(parent.next(), openBy)
-        }
-    }
-    
     public variant OnceResult[I, A] {
         | Ok { value: A }
         | Ng { failure: Result[I, A] }
     }
     
     public class OffsideParserEnv: ParserEnv[Token] {
-        public block[A, B](opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, A * B] {
+        
+    }
+    
+    public class Parser: OffsideParserEnv
+    {
+        public typeHint: ParserRef[Token, TypeHint] = ParserRef();
+        public pattern: ParserRef[Token, Pattern] = ParserRef();
+        public expr: ParserRef[Token, Expr] = ParserRef();
+        public stmt: ParserRef[Token, Stmt] = ParserRef();
+        public decl: ParserRef[Token, Decl] = ParserRef();
+        public mod: Parser[Token, Ast.Module];
+        
+        public this() {
+            def tid: Parser[Token, Token.Id] = satisfy("id", _ is Token.Id).map(_ :> Token.Id);
+            def infixOp(precedence: int): Parser[Token, Token.InfixOp] {
+                satisfy("infixOp", t => t is Token.InfixOp && (t :> Token.InfixOp).precedence == precedence).map(_ :> Token.InfixOp)
+            }
+            
+            // TypeHint
+            {
+                def typeHintFactor: Parser[Token, TypeHint] = tid.map(a => TypeHint.Name(a.value).exSpan(a));
+                def typeHintParen: Parser[Token, TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
+                    match (mt) {
+                        | Some(t) => t
+                        | _ => TypeHint.Unit()
+                    }
+                }))._and(delim(")")).map((ab, c) => ab[1].exSpan([ab[0], c]));
+                def typeHintTerm = typeHintParen._or(typeHintFactor);
+                
+                typeHint.impl = typeHintTerm.many1().map(ts => {
+                    if (ts.Length == 1)
+                        ts.Head
+                    else
+                        TypeHint.Generics(ts.Head, ts.Tail)
+                });
+            }
+            
+            // Pattern
+            {
+                def int = satisfy("int", _ is Token.Int).map(t => Pattern.Int((t :> Token.Int).value).exSpan([t]));
+                def any = satisfy("any", t => t is Token.Id && (t :> Token.Id).value == "_").map(t => Pattern.Any().exSpan([t])); // delim("_")では無いので注意
+                pattern.impl = int._or(any);
+            }
+            
+            // Expr
+            {
+                def id = tid.map(t => Expr.Id(t.value).exSpan(t));
+                def unit = delim("(")._and(delim(")")).map((a, b) => Expr.Unit().exSpan([a, b]));
+                def int = satisfy("int", _ is Token.Int).map(t => Expr.Int((t :> Token.Int).value).exSpan(t));
+                def str = satisfy("string", _ is Token.String).map(t => Expr.String((t :> Token.String).value).exSpan(t));
+                def paren = delim("(")._andR(expr)._andL(delim(")"));
+                def blockExpr = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => Expr.Block(stmts).exSpan(stmts)); // TODO: block name
+                
+                def matchEntry = delim("|")._and(pattern._andL(delim("=>"))._and(expr).map((p, e) => {
+                    MatchEntry.Case(p, e).exSpan([p.span, e.span])
+                }).onceMatchEntry()).map((a, b) => b.exSpan(a)).consumeBlock();
+                def matchExpr: Parser[Token, Expr] = delim("match")._and(
+                    expr._and(matchEntry.many1()).map((e, cs) => {
+                        Expr.Match(e, cs).exSpan(e.span :: cs.Map(_.span))
+                    }).onceExpr()
+                ).map((a, b) => b.exSpan(a)).consumeBlock();
+                
+                def factor = str._or(id)._or(int)._or(unit)._or(paren)._or(blockExpr)._or(matchExpr);
+            
+                // メンバーアクセス
+                def member = factor._andL(delim("."))._and(tid).map((a, b) => Expr.Member(a, b.value).exSpan([a.span, b.span]));
+                def staticMember = tid._andL(delim("::"))._and(tid).map((a, b) => Expr.StaticMember(a.value, b.value).exSpan([a.span, b.span]));
+                def term1 = staticMember._or(member)._or(factor);
+                
+                // 呼び出し式
+                def term2 = term1.many1().map(es => {
+                    if (es.Length == 1)
+                        es.First()
+                    else
+                        Expr.Apply(es.First(), es.Tail).exSpan(es)
+                });
+                
+                // 二項演算
+                // 優先順位と逆順なので注意(term3がpreced6, term6がpreced3になる)
+                def term6 = Enumerable.Range(3, 4).Reverse().Map(i => infixOp(i)).Fold(term2, (op, acc) => acc._and(op)._and(acc).map((a_op, b) => {
+                    def a = a_op[0];
+                    def op = a_op[1];
+                    def fn = Expr.Id(op.value).addSpan(op.span);
+                    Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
+                })._or(acc));
+            
+                expr.impl = term6;
+            }
+            
+            // Stmt
+            {
+                def exprStmt = expr.map(e => Stmt.Expr(e).exSpan(e));
+                def retStmt = delim("return")._and(expr.optional()).map((a, b) => {
+                    def ret = Stmt.Ret(b.WithDefault(Expr.Unit())).exSpan(a);
+                    if (b.IsSome) ret.exSpan(b.Value) else ret
+                });
+                stmt.impl = retStmt._or(exprStmt).consumeBlock();
+            }
+            
+            // Decls
+            {
+                def fnArg: Parser[Token, FnArg] = delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
+                    FnArg(a.value, b).exSpan([a.span, b.span])
+                });
+                def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
+                def fnBody = stmt.many().map(stmts => Expr.Block(stmts).exSpan(stmts));
+                def fnDecl: Parser[Token, Decl] = delim("fn")._and(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((n_rs_r, c) => {
+                        def n = n_rs_r[0][0];
+                        def rs = n_rs_r[0][1];
+                        def r = n_rs_r[1];
+                        Decl.Fn(n.value, rs, r, c).exSpan([n.span, c.span])
+                    })._andL(eoi()).onceDecl()
+                ).map((a, b) => b.exSpan(a));
+            
+                def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
+                    def (s, t) = s_t: Token.Id * TypeHint;
+                    ClassItem.Field(s.value, t, false, e)
+                })).map((a, b) => b.exSpan(a));
+                def classVarField: Parser[Token, ClassItem] = delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
+                    def (s, t) = s_t: Token.Id * TypeHint;
+                    ClassItem.Field(s.value, t, true, e)
+                })).map((a, b) => b.exSpan(a));
+                def classMethod: Parser[Token, ClassItem] = fnDecl.map(d => {
+                    def ci = match (d) {
+                        | Decl.Fn as f => ClassItem.Method(f.name, f.args, f.body)
+                        | Decl.Error(reason) => ClassItem.Error(reason)
+                    }
+                    ci.exSpan(d)
+                });
+                def classItem = classValField._or(classVarField)._or(classMethod);
+                def classDecl = delim("class")._and(
+                    tid._and(classItem.many()).map((a, items) => {
+                        Decl.Class(a.value, items).exSpan(a.span :: items.Map(i => i.span).LastN(1))
+                    })._andL(eoi()).onceDecl()
+                ).map((a, b) => b.exSpan(a));
+            
+                def importDecl = delim("import")._and(
+                    tid._and(delim("::")._andR(tid).many()).map((x, xs) => {
+                        def path = x.value :: xs.Map(t => t.value);
+                        if (xs.Length > 1)
+                            Decl.Import(path).exSpan((x :: xs.LastN(1)).Map(t => t))
+                        else
+                            Decl.Import(path).exSpan(x)
+                    })._andL(eoi()).onceDecl()
+                ).map((a, b) => b.exSpan(a));
+            
+                decl.impl = importDecl._or(classDecl)._or(fnDecl).consumeBlock();
+            }
+            
+            mod = decl.many().map(ds => {
+                Ast.Module(ds).exSpan(ds)
+            })._andL(eoi());
+        }
+        
+        delim(s: string): Parser[Token, Token] {
+            satisfy($"delimiter $s", t => {
+                match (t) {
+                    | Token.Delim(ts) when (s == ts) => true
+                    | _ => false
+                }
+            })
+        }
+    }
+    
+    public module ParserExtensions {
+        public onceExpr(this p: Parser[Token, Expr]): Parser[Token, Expr] {
+            p.skipFail(ret => {
+                def failure = ret :> Result[Token, Expr].Failure; // always it is failure
+                def ret = Expr.Error(failure.reason);
+                ret.span = failure.failAt.position() :> Span;
+                ret
+            })
+        }
+        
+        public onceDecl(this p: Parser[Token, Decl]): Parser[Token, Decl] {
+            p.skipFail(ret => {
+                def failure = ret :> Result[Token, Decl].Failure; // always it is failure
+                def ret = Decl.Error(failure.reason);
+                ret.span = failure.failAt.position() :> Span;
+                ret
+            })
+        }
+        
+        public onceClassItem(this p: Parser[Token, ClassItem]): Parser[Token, ClassItem] {
+            p.skipFail(ret => {
+                def failure = ret :> Result[Token, ClassItem].Failure; // always it is failure
+                def ret = ClassItem.Error(failure.reason);
+                ret.span = failure.failAt.position() :> Span;
+                ret
+            })
+        }
+        
+        public onceMatchEntry(this p: Parser[Token, MatchEntry]): Parser[Token, MatchEntry] {
+            p.skipFail(ret => {
+                def failure = ret :> Result[Token, MatchEntry].Failure; // always it is failure
+                def ret = MatchEntry.Error(failure.reason);
+                ret.span = failure.failAt.position() :> Span;
+                ret
+            })
+        }
+        
+        public exSpan[T](this ast: T, span: Span): T where T: HasSpan[T] {
+            ast.addSpan(span)
+        }
+        
+        public exSpan[T](this ast: T, token: Token): T where T: HasSpan[T] {
+            ast.exSpan(token.span)
+        }
+        
+        public exSpan[T, S](this ast: T, s: S): T where T: HasSpan[T] where S: HasSpan[S] {
+            ast.exSpan(s.span)
+        }
+        
+        public exSpan[T](this ast: T, spans: IEnumerable[Span]): T where T: HasSpan[T] {
+            if (spans.IsEmpty())
+                ast
+            else
+                ast.addSpan(spans.Skip(1).FoldRight(spans.First(), (a, b) => a + b))
+        }
+        
+        public exSpan[T](this ast: T, tokens: IEnumerable[Token]): T where T: HasSpan[T] {
+            ast.exSpan(tokens.Map(t => t.span))
+        }
+        
+        public exSpan[T, S](this ast: T, ss: IEnumerable[S]): T where T: HasSpan[T] where S: HasSpan[S] {
+            ast.exSpan(ss.Map(t => t.span))
+        }
+        
+        public consumeBlock[A](this p: Parser[Token, A]): Parser[Token, A] {
+            AnnoParser(input => {
+                match (input.get()) {
+                    | Some(openBy) => match (p.parse(BlockInput(input, openBy))) {
+                        | Parse.Result.Success(result, next) => {
+                            Result.Success(result, (next :> BlockInput).parent) // unwrap TODO ちゃんとEOIまで読み込んだかチェックする (eoi()を付ければいい？)
+                        }
+                        | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
+                    }
+                    | _ => Result.Failure("reach EOI", input)
+                }
+            })
+        }
+        
+        public open[A, B](this opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, A * B] {
             AnnoParser(input => {
                 def openBy = input.get();
                 
@@ -129,199 +347,8 @@ namespace Atla.Lang.Parser
             })
         }
         
-        public blockR[A, B](opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, B] {
-            block(opener, inner).map((_, b) => b)
-        }
-        
-        public inline[A, B](opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, A * B] {
-            AnnoParser(input => {
-                def openBy = input.get();
-                
-                match (opener.parse(input)) {
-                    | Parse.Result.Success(result, next) => {
-                        match (inner.parse(InlineInput(next, openBy.Value))) {
-                            | Parse.Result.Success(innerResult, innerNext) => {
-                                Result.Success((result, innerResult), (innerNext :> InlineInput).parent) // unwrap
-                            }
-                            | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                        }
-                    }
-                    | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                }
-            })
-        }
-    }
-    
-    public class Parser: OffsideParserEnv
-    {
-        spanned[T](ast: T, spans: list[Span]): T where T: HasSpan[T] {
-            if (spans.IsEmpty)
-                ast
-            else
-                ast.addSpan(spans.Tail.FoldRight(spans.Head, (a, b) => a + b))
-        }
-        spanned[T](ast: T, tokens: list[Token]): T where T: HasSpan[T] {
-            spanned(ast, tokens.Map(t => t.span))
-        }
-        spanned[T, S](ast: T, ss: list[S]): T where T: HasSpan[T] where S: HasSpan[S] {
-            spanned(ast, ss.Map(t => t.span))
-        }
-        
-        // Exprs
-        public expr: ParserRef[Token, Expr] = ParserRef();
-        
-        // Stmts
-        public exprStmt: Parser[Token, Stmt];
-        public retStmt: Parser[Token, Stmt];
-        public stmt: ParserRef[Token, Stmt] = ParserRef();
-        
-        // Decls
-        public classDecl: Parser[Token, Decl];
-        public fnDecl: Parser[Token, Decl];
-        public importDecl: Parser[Token, Decl];
-        public decl: ParserRef[Token, Decl] = ParserRef();
-        
-        // Module
-        public mod: Parser[Token, Ast.Module];
-        
-        public this() {
-            def tid: Parser[Token, Token.Id] = satisfy("id", _ is Token.Id).map(_ :> Token.Id);
-            def infixOp(precedence: int): Parser[Token, Token.InfixOp] {
-                satisfy("infixOp", t => t is Token.InfixOp && (t :> Token.InfixOp).precedence == precedence).map(_ :> Token.InfixOp)
-            }
-            
-            // Expr
-            {
-                def id = tid.map(t => spanned(Expr.Id(t.value), [t]));
-                def int = satisfy("int", _ is Token.Int).map(t => spanned(Expr.Int((t :> Token.Int).value), [t]));
-                def str = satisfy("string", _ is Token.String).map(t => spanned(Expr.String((t :> Token.String).value), [t]));
-                def paren = delim("(")._andR(expr)._andL(delim(")"));
-                def blockExpr = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => spanned(Expr.Block(stmts), stmts)); // TODO: block name
-                def factor = str._or(id)._or(int)._or(paren)._or(blockExpr);
-            
-                // メンバーアクセス
-                def member = factor._andL(delim("."))._and(tid).map((a, b) => spanned(Expr.Member(a, b.value), [a.span, b.span]));
-                def staticMember = tid._andL(delim("::"))._and(tid).map((a, b) => spanned(Expr.StaticMember(a.value, b.value), [a.span, b.span]));
-                def term1 = staticMember._or(member)._or(factor);
-                
-                // 呼び出し式
-                def term2 = term1.many1().map(es => {
-                    if (es.Length == 1)
-                        es.First()
-                    else
-                        spanned(Expr.Apply(es.First(), es.Tail), es)
-                });
-                
-                // 二項演算
-                // 優先順位と逆順なので注意(term3がpreced6, term6がpreced3になる)
-                def term6 = Enumerable.Range(3, 4).Reverse().Map(i => infixOp(i)).Fold(term2, (op, acc) => acc._and(op)._and(acc).map((a_op, b) => {
-                    def a = a_op[0];
-                    def op = a_op[1];
-                    def fn = Expr.Id(op.value).addSpan(op.span);
-                    Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
-                })._or(acc));
-            
-                expr.impl = term6;
-            }
-            
-            exprStmt = expr.map(e => spanned(Stmt.Expr(e), [e]));
-            retStmt = delim("return")._and(expr.optional()).map((a, b) => {
-                def ret = spanned(Stmt.Ret(b.WithDefault(Expr.Unit())), [a]);
-                if (b.IsSome) spanned(ret, [b.Value]) else ret
-            });
-            stmt.impl = retStmt._or(exprStmt);
-            
-            def typeHintFactor: Parser[Token, TypeHint] = tid.map(a => {
-                spanned(TypeHint.Name(a.value), [a])
-            });
-            def typeHintParen: Parser[Token, TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
-                match (mt) {
-                    | Some(t) => t
-                    | _ => TypeHint.Unit()
-                }
-            }))._and(delim(")")).map((ab, c) => spanned(ab[1], [ab[0], c]));
-            def typeHintTerm = typeHintParen._or(typeHintFactor);
-            def typeHint: Parser[Token, TypeHint] = typeHintTerm.many1().map(ts => {
-                if (ts.Length == 1)
-                    ts.Head
-                else
-                    TypeHint.Generics(ts.Head, ts.Tail)
-            });
-            
-            // Decls
-            def fnArg: Parser[Token, FnArg] = delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
-                spanned(FnArg(a.value, b), [a.span, b.span])
-            });
-            def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
-            def fnBody = stmt.many().map(stmts => spanned(Expr.Block(stmts), stmts));
-            fnDecl = block(delim("fn"), skipDeclError(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((n_rs_r, c) => {
-                def n = n_rs_r[0][0];
-                def rs = n_rs_r[0][1];
-                def r = n_rs_r[1];
-                spanned(Decl.Fn(n.value, rs, r, c), [n.span, c.span])
-            })._andL(eoi()))).map((a, b) => spanned(b, [a]));
-            
-            def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                def (s, t) = s_t: Token.Id * TypeHint;
-                ClassItem.Field(s.value, t, false, e)
-            })).map((a, b) => spanned(b, [a]));
-            def classVarField: Parser[Token, ClassItem] = delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                def (s, t) = s_t: Token.Id * TypeHint;
-                ClassItem.Field(s.value, t, true, e)
-            })).map((a, b) => spanned(b, [a]));
-            def classMethod: Parser[Token, ClassItem] = fnDecl.map(d => {
-                spanned(match (d) {
-                    | Decl.Fn as f => ClassItem.Method(f.name, f.args, f.body)
-                    | Decl.Error(reason) => ClassItem.Error(reason)
-                }, [d])
-            });
-            def classItem = classValField._or(classVarField)._or(classMethod);
-            classDecl = block(delim("class"), skipDeclError(tid._and(classItem.many()).map((a, items) => {
-                spanned(Decl.Class(a.value, items), a.span :: items.Map(i => i.span).LastN(1))
-            })._andL(eoi()))).map((a, b) => spanned(b, [a]));
-            
-            importDecl = block(delim("import"), skipDeclError(
-                tid._and(delim("::")._andR(tid).many()).map((x, xs) => {
-                    def path = x.value :: xs.Map(t => t.value);
-                    if (xs.Length > 1)
-                        spanned(Decl.Import(path), (x :: xs.LastN(1)).Map(t => t))
-                    else
-                        spanned(Decl.Import(path), [x])
-                })._andL(eoi())
-            )).map((a, b) => spanned(b, [a]));
-            
-            decl.impl = importDecl._or(classDecl)._or(fnDecl);
-            
-            mod = decl.many().map(ds => {
-                spanned(Ast.Module(ds), ds)
-            })._andL(eoi());
-        }
-        
-        delim(s: string): Parser[Token, Token] {
-            satisfy($"delimiter $s", t => {
-                match (t) {
-                    | Token.Delim(ts) when (s == ts) => true
-                    | _ => false
-                }
-            })
-        }
-        
-        skipDeclError(p: Parser[Token, Decl]): Parser[Token, Decl] {
-            p.skipFail(ret => {
-                def failure = ret :> Result[Token, Decl].Failure; // always it is failure
-                def ret = Decl.Error(failure.reason);
-                ret.span = failure.failAt.position() :> Span;
-                ret
-            })
-        }
-        
-        skipClassItemError(p: Parser[Token, ClassItem]): Parser[Token, ClassItem] {
-            p.skipFail(ret => {
-                def failure = ret :> Result[Token, ClassItem].Failure; // always it is failure
-                def ret = ClassItem.Error(failure.reason);
-                ret.span = failure.failAt.position() :> Span;
-                ret
-            })
+        public openR[A, B](this opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, B] {
+            open(opener, inner).map((_, b) => b)
         }
     }
 }

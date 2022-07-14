@@ -14,6 +14,17 @@ using Atla.Lang.Parse;
 
 namespace Atla.Lang.Ast
 {
+    public variant Pattern: HasSpan[Pattern] {
+        | Any
+        | Int { value: int }
+    }
+    
+    [Record]
+    public variant MatchEntry: HasSpan[MatchEntry] {
+        | Case { pattern: Pattern; expr: Expr; }
+        | Error { reason: string }
+    }
+    
     [Record]
     public class FnArg: HasSpan[FnArg] {
         public name: string;
@@ -30,6 +41,8 @@ namespace Atla.Lang.Ast
         | Member { obj: Expr; member: string }
         | StaticMember { objName: string; member: string }
         | Apply { fn: Expr; args: list[Expr] }
+        | Match { expr: Expr; entries: list[MatchEntry] }
+        | Error { reason: string }
         
         public typeHint: option[TypeHint] = None();
     }
