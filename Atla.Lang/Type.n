@@ -129,7 +129,7 @@ namespace Atla.Lang
             args: list[Type]; ret: Type;
             
             public override ToString(): string {
-                def argsStr = Misc.joinToString(", ", args);
+                def argsStr = args.joinToString(", ");
                 $"Fn($argsStr): $ret"
             }
             

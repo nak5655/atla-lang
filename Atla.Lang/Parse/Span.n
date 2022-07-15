@@ -12,7 +12,7 @@ using Atla.Lang.Parse;
 namespace Atla.Lang.Parse
 {
     [Record]
-    public class Span {
+    public class Span: System.IEquatable[Span], System.IComparable[Span] {
         public lo: Position;
         public hi: Position;
         
@@ -39,6 +39,24 @@ namespace Atla.Lang.Parse
         
         public static zero(): Span {
             Span(Position([], 0, 0, 0), Position([], 0, 0, 0))
+        }
+                
+        public override GetHashCode() : int {
+            lo.GetHashCode() + hi.GetHashCode() * 11;
+        }
+        
+        public override Equals(other: object): bool implements System.IEquatable[Span].Equals {
+            match (other) {
+                | Span as s => lo.Equals(s.lo) && hi.Equals(s.hi)
+                | _ => false
+            }
+        }
+        
+        public CompareTo(other: Span): int {
+            match (other) {
+                | Span as s => if (lo.Equals(s.lo)) hi.CompareTo(other.hi) else lo.CompareTo(other.lo)
+                | _ => 1
+            }
         }
     }
     

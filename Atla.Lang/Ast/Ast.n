@@ -52,6 +52,7 @@ namespace Atla.Lang.Ast
         | Assign { name: string; rhs: Ast.Expr }
         | Expr { expr: Ast.Expr }
         | Ret { expr: Ast.Expr }
+        | Error { reason: string }
     }
     
     public variant ClassItem: HasSpan[ClassItem] {

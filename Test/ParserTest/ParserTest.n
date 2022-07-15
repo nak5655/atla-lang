@@ -33,7 +33,7 @@ namespace Test.ParserTest
         }
         
         [Test]
-        public EasyBinOpTest(): void {
+        public AstEasyBinOpTest(): void {
             def lexer = Lexer();
             match (lexer.tokenize("2 + 5 * (10 - 1) == 47")) {
                 | Result.Success(tokens, _) => {

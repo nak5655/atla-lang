@@ -12,6 +12,8 @@ using Atla.Lang.Parse;
 namespace Atla.Lang.Parse
 {
     public class ParserEnv[I] {
+        logStack: System.Collections.Generic.Stack[string] = System.Collections.Generic.Stack();
+        
         public satisfy(name: string, pred: I -> bool): Parser[I, I] {
             AnnoParser(input => {
                 match (input.get()) {
@@ -75,6 +77,23 @@ namespace Atla.Lang.Parse
         
         public _ref[A](): ParserRef[I, A] {
             ParserRef()
+        }
+        
+        public log[A](name: string, p: Parser[I, A]): Parser[I, A] {
+            AnnoParser(input => {
+                _ = logStack.Push(name);
+                
+                def res = p.parse(input);
+                match (res) {
+                    | Parse.Result.Success => System.Diagnostics.Debug.WriteLine($"ParserLog: $(logStack.Reverse().joinToString(\">\")) OK")
+                    | Parse.Result.Failure(reason, _) => System.Diagnostics.Debug.WriteLine($"ParserLog: $(logStack.Reverse().joinToString(\">\")) NG $reason")
+                }
+                
+                when (logStack.Pop() != name)
+                    throw Exception("log error");
+                
+                res
+            })
         }
     }
     

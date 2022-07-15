@@ -101,7 +101,7 @@ namespace Atla.Lang.Hir
             } 
             
             public override ToString(): string {
-                def stmtsStr = Misc.joinToString(", ", stmts);
+                def stmtsStr = stmts.joinToString(", ");
                 $"Block($stmtsStr)"
             }
         }
@@ -117,7 +117,7 @@ namespace Atla.Lang.Hir
             }
             
             public override ToString(): string {
-                def argsStr = Misc.joinToString(", ", args);
+                def argsStr = args.joinToString(", ");
                 $"Fn($argsStr) { $body }"
             }
         }
@@ -149,7 +149,7 @@ namespace Atla.Lang.Hir
             public args: list[Expr];
             
             public override ToString(): string {
-                def argsStr = Misc.joinToString(", ", args);
+                def argsStr = args.joinToString(", ");
                 $"Apply($fn, $argsStr)"
             }
         }

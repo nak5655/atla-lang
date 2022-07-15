@@ -55,7 +55,12 @@ namespace Atla.Lang.Parser
         public this(parent: Input[Token], openBy: Token) {
             this.parent = parent;
             this.openBy = openBy;
-            this.openAt = openBy.span.lo;
+            
+            // 行頭をブロック開始位置とする
+            def line = openBy.span.lo.line;
+            def col = openBy.span.lo.lines.Nth(line).TakeWhile(_ == ' ').Count();
+            def index = openBy.span.lo.index - (openBy.span.lo.col - col);
+            this.openAt = Position(openBy.span.lo.lines, line, col, index);
         }
         
         public get(): option[Token] {
@@ -133,73 +138,82 @@ namespace Atla.Lang.Parser
             
             // Expr
             {
-                def id = tid.map(t => Expr.Id(t.value).exSpan(t));
-                def unit = delim("(")._and(delim(")")).map((a, b) => Expr.Unit().exSpan([a, b]));
-                def int = satisfy("int", _ is Token.Int).map(t => Expr.Int((t :> Token.Int).value).exSpan(t));
-                def str = satisfy("string", _ is Token.String).map(t => Expr.String((t :> Token.String).value).exSpan(t));
-                def paren = delim("(")._andR(expr)._andL(delim(")"));
-                def blockExpr = delim("{")._andR(stmt.many())._andL(delim("}")).map(stmts => Expr.Block(stmts).exSpan(stmts)); // TODO: block name
-                
-                def matchEntry = delim("|")._and(pattern._andL(delim("=>"))._and(expr).map((p, e) => {
+                def id = log("expr_id", tid.map(t => Expr.Id(t.value).exSpan(t)));
+                def unit = log("expr_unit", delim("(")._and(delim(")")).map((a, b) => Expr.Unit().exSpan([a, b])));
+                def int = log("expr_int", satisfy("int", _ is Token.Int).map(t => Expr.Int((t :> Token.Int).value).exSpan(t)));
+                def str = log("expr_string", satisfy("string", _ is Token.String).map(t => Expr.String((t :> Token.String).value).exSpan(t)));
+                def paren = log("expr_paren", delim("(")._andR(expr)._andL(delim(")")));
+                def blockExpr = log("do", delim("do")._and(
+                    stmt.many1().map(ss => Expr.Block(ss).exSpan(ss)).onceExpr()
+                ).map((a, b) => b.exSpan(a)));
+
+                def matchEntry = log("match_entry", delim("|")._and(pattern._andL(delim("=>"))._and(expr).map((p, e) => {
                     MatchEntry.Case(p, e).exSpan([p.span, e.span])
-                }).onceMatchEntry()).map((a, b) => b.exSpan(a)).consumeBlock();
-                def matchExpr: Parser[Token, Expr] = delim("match")._and(
+                }).onceMatchEntry()).map((a, b) => b.exSpan(a)).consumeBlock());
+                def matchExpr: Parser[Token, Expr] = log("match", delim("match")._and(
                     expr._and(matchEntry.many1()).map((e, cs) => {
                         Expr.Match(e, cs).exSpan(e.span :: cs.Map(_.span))
                     }).onceExpr()
-                ).map((a, b) => b.exSpan(a)).consumeBlock();
+                ).map((a, b) => b.exSpan(a)).consumeBlock());
                 
-                def factor = str._or(id)._or(int)._or(unit)._or(paren)._or(blockExpr)._or(matchExpr);
+                def factor = str._or(matchExpr)._or(blockExpr)._or(id)._or(int)._or(unit)._or(paren);
             
                 // メンバーアクセス
-                def member = factor._andL(delim("."))._and(tid).map((a, b) => Expr.Member(a, b.value).exSpan([a.span, b.span]));
-                def staticMember = tid._andL(delim("::"))._and(tid).map((a, b) => Expr.StaticMember(a.value, b.value).exSpan([a.span, b.span]));
+                def member = log("expr_member", factor._andL(delim("."))._and(tid).map((a, b) => Expr.Member(a, b.value).exSpan([a.span, b.span])));
+                def staticMember = log("expr_static", tid._andL(delim("::"))._and(tid).map((a, b) => Expr.StaticMember(a.value, b.value).exSpan([a.span, b.span])));
                 def term1 = staticMember._or(member)._or(factor);
                 
                 // 呼び出し式
-                def term2 = term1.many1().map(es => {
+                def term2 = log("expr_apply", term1.many1().map(es => {
                     if (es.Length == 1)
                         es.First()
                     else
                         Expr.Apply(es.First(), es.Tail).exSpan(es)
-                });
+                }));
                 
                 // 二項演算
                 // 優先順位と逆順なので注意(term3がpreced6, term6がpreced3になる)
-                def term6 = Enumerable.Range(3, 4).Reverse().Map(i => infixOp(i)).Fold(term2, (op, acc) => acc._and(op)._and(acc).map((a_op, b) => {
-                    def a = a_op[0];
-                    def op = a_op[1];
-                    def fn = Expr.Id(op.value).addSpan(op.span);
-                    Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
-                })._or(acc));
+                def term6 = Enumerable.Range(3, 4).Reverse().Map(i => infixOp(i)).Fold(term2, (op, acc) => acc._and(op._and(acc).optional()).map((a, m_op_b) => {
+                    match (m_op_b) {
+                        | Some(op_b) => {
+                            def op = op_b[0];
+                            def b = op_b[1];
+                            def fn = Expr.Id(op.value).addSpan(op.span);
+                            Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
+                        }
+                        | _ => a
+                    }
+                }));
             
-                expr.impl = term6;
+                expr.impl = term6.inlineBlock();
             }
             
             // Stmt
             {
-                def exprStmt = expr.map(e => Stmt.Expr(e).exSpan(e));
-                def retStmt = delim("return")._and(expr.optional()).map((a, b) => {
+                def letStmt = log("stmt_let", delim("let")._and(tid._andL(delim("="))._and(expr).map((id, e) => {
+                    Stmt.Let(id.value, e).exSpan([id.span, e.span])
+                }).onceStmt()).map((a, b) => b.exSpan(a)));
+                def exprStmt = log("stmt_expr", expr.map(e => Stmt.Expr(e).exSpan(e)));
+                def retStmt = log("stmt_return", delim("return")._and(expr.optional()).map((a, b) => {
                     def ret = Stmt.Ret(b.WithDefault(Expr.Unit())).exSpan(a);
                     if (b.IsSome) ret.exSpan(b.Value) else ret
-                });
-                stmt.impl = retStmt._or(exprStmt).consumeBlock();
+                }));
+                stmt.impl = letStmt._or(retStmt)._or(exprStmt).onceStmt().consumeBlock();
             }
             
             // Decls
             {
-                def fnArg: Parser[Token, FnArg] = delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
+                def fnArg: Parser[Token, FnArg] = log("decl_fn_arg", delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
                     FnArg(a.value, b).exSpan([a.span, b.span])
-                });
+                }));
                 def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
-                def fnBody = stmt.many().map(stmts => Expr.Block(stmts).exSpan(stmts));
-                def fnDecl: Parser[Token, Decl] = delim("fn")._and(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(fnBody).map((n_rs_r, c) => {
+                def fnDecl: Parser[Token, Decl] = log("decl_fn", delim("fn")._and(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(expr).map((n_rs_r, c) => {
                         def n = n_rs_r[0][0];
                         def rs = n_rs_r[0][1];
                         def r = n_rs_r[1];
                         Decl.Fn(n.value, rs, r, c).exSpan([n.span, c.span])
                     })._andL(eoi()).onceDecl()
-                ).map((a, b) => b.exSpan(a));
+                ).map((a, b) => b.exSpan(a)));
             
                 def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
                     def (s, t) = s_t: Token.Id * TypeHint;
@@ -223,7 +237,7 @@ namespace Atla.Lang.Parser
                     })._andL(eoi()).onceDecl()
                 ).map((a, b) => b.exSpan(a));
             
-                def importDecl = delim("import")._and(
+                def importDecl = log("import", delim("import")._and(
                     tid._and(delim("::")._andR(tid).many()).map((x, xs) => {
                         def path = x.value :: xs.Map(t => t.value);
                         if (xs.Length > 1)
@@ -231,7 +245,7 @@ namespace Atla.Lang.Parser
                         else
                             Decl.Import(path).exSpan(x)
                     })._andL(eoi()).onceDecl()
-                ).map((a, b) => b.exSpan(a));
+                ).map((a, b) => b.exSpan(a)));
             
                 decl.impl = importDecl._or(classDecl)._or(fnDecl).consumeBlock();
             }
@@ -256,6 +270,15 @@ namespace Atla.Lang.Parser
             p.skipFail(ret => {
                 def failure = ret :> Result[Token, Expr].Failure; // always it is failure
                 def ret = Expr.Error(failure.reason);
+                ret.span = failure.failAt.position() :> Span;
+                ret
+            })
+        }
+        
+        public onceStmt(this p: Parser[Token, Stmt]): Parser[Token, Stmt] {
+            p.skipFail(ret => {
+                def failure = ret :> Result[Token, Stmt].Failure; // always it is failure
+                def ret = Stmt.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
             })
@@ -320,7 +343,11 @@ namespace Atla.Lang.Parser
                 match (input.get()) {
                     | Some(openBy) => match (p.parse(BlockInput(input, openBy))) {
                         | Parse.Result.Success(result, next) => {
-                            Result.Success(result, (next :> BlockInput).parent) // unwrap TODO ちゃんとEOIまで読み込んだかチェックする (eoi()を付ければいい？)
+                            def blockNext = next :> BlockInput;
+                            match (blockNext.get()) {
+                                | Some => Result.Failure("A block parser did not reach EOI.", blockNext)
+                                | _ => Result.Success(result, blockNext.parent) // unwrap
+                            }
                         }
                         | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
                     }
@@ -329,26 +356,18 @@ namespace Atla.Lang.Parser
             })
         }
         
-        public open[A, B](this opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, A * B] {
+        public inlineBlock[A](this p: Parser[Token, A]): Parser[Token, A] {
             AnnoParser(input => {
-                def openBy = input.get();
-                
-                match (opener.parse(input)) {
-                    | Parse.Result.Success(result, next) => {
-                        match (inner.parse(BlockInput(next, openBy.Value))) {
-                            | Parse.Result.Success(innerResult, innerNext) => {
-                                Result.Success((result, innerResult), (innerNext :> BlockInput).parent) // unwrap
-                            }
-                            | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
+                match (input.get()) {
+                    | Some(openBy) => match (p.parse(BlockInput(input, openBy))) {
+                        | Parse.Result.Success(result, next) => {
+                            Result.Success(result, (next :> BlockInput).parent) // unwrap EOIまで読み込まなくてもいい
                         }
+                        | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
                     }
-                    | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
+                    | _ => Result.Failure("reach EOI", input)
                 }
             })
-        }
-        
-        public openR[A, B](this opener: Parser[Token, A], inner: Parser[Token, B]): Parser[Token, B] {
-            open(opener, inner).map((_, b) => b)
         }
     }
 }
