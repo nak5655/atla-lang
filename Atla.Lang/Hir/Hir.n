@@ -22,7 +22,7 @@ namespace Atla.Lang.Hir
     public variant Error {
         | DuplicatedDeclaration { name: string; type: Type; already: Type }
         | UndefinedReference {
-            name: string; type: Type;
+            name: string; type: Atla.Lang.Type;
             
             public override ToString(): string {
                 $"Undefined variable. $name: $type"
@@ -44,19 +44,63 @@ namespace Atla.Lang.Hir
         }
     }
     
+    public variant Pattern: HasSpan[Pattern] {
+        | Any
+        | Int { value: int }
+        
+        public scanErrors(): IEnumerable[(Error * Span)] {
+            [] // TODO
+        }
+    }
+    
     public variant Stmt: HasSpan[Expr] {
         | Expr { expr: Hir.Expr }
         | Let { name: string; expr: Hir.Expr }
         | Assign { name: string; expr: Hir.Expr }
         | Return { value: Hir.Expr }
         
+        public errors: List[Error] = List();
+        
         public scanErrors(): IEnumerable[(Error * Span)] {
-            match (this) {
+            def es = match (this) {
                 | Expr(e) => e.scanErrors()
                 | Let(_, e) => e.scanErrors()
                 | Assign(_, e) => e.scanErrors()
                 | Return(e) => e.scanErrors()
             }
+            errors.Map(e => (e, span)).Concat(es)
+        }
+    }
+    
+    public class SwitchEntry: HasSpan[SwitchEntry] {
+        public bodyScope: Scope.Block;
+        public pred: Expr;
+        public body: Expr;
+        
+        public this(bodyScope: Scope.Block, pred: Expr, body: Expr) {
+            this.bodyScope = bodyScope;
+            this.pred = pred;
+            this.body = body;
+        }
+        
+        public scanErrors(): IEnumerable[(Error * Span)] {
+            pred.scanErrors().Concat(body.scanErrors())
+        }
+    }
+    
+    public class MatchEntry: HasSpan[MatchEntry] {
+        public scope: Scope.Block;
+        public pattern: Pattern;
+        public expr: Expr;
+        
+        public this(scope: Scope.Block, pattern: Pattern, expr: Expr) {
+            this.scope = scope;
+            this.pattern = pattern;
+            this.expr = expr;
+        }
+        
+        public scanErrors(): IEnumerable[(Error * Span)] {
+            pattern.scanErrors().Concat(expr.scanErrors())
         }
     }
     
@@ -76,6 +120,13 @@ namespace Atla.Lang.Hir
         | Unit {
             public override ToString(): string {
                 "Unit"
+            }
+        }
+        | Bool {
+            public value: bool;
+            
+            public override ToString(): string {
+                $"Bool($value)"
             }
         }
         | Int {
@@ -104,6 +155,14 @@ namespace Atla.Lang.Hir
                 def stmtsStr = stmts.joinToString(", ");
                 $"Block($stmtsStr)"
             }
+        }
+        | Switch {
+            public entries: list[SwitchEntry];
+        }
+        | Match {
+            public scope: Scope.Block;
+            public expr: Expr;
+            public entries: list[MatchEntry];
         }
         | Fn {
             public args: list[FnArg];
@@ -156,11 +215,13 @@ namespace Atla.Lang.Hir
         
         public mutable typeHint: TypeHint = TypeHint.None();
         public mutable type: Type.Var = Type.Var();
+        public errors: List[Error] = List();
         
         // TODO Type.Varのエラーが重複する
         public scanErrors(): IEnumerable[(Error * Span)] {
             def es = match (this) {
                 | Unit => []
+                | Bool => []
                 | Int => []
                 | String => []
                 | Block(_, ss) => ss.SelectMany(_.scanErrors())
@@ -169,8 +230,10 @@ namespace Atla.Lang.Hir
                 | Member(e, _) => e.scanErrors()
                 | StaticMember => []
                 | Apply(fn, args) => fn.scanErrors().Concat(args.SelectMany(_.scanErrors()))
+                | Switch(es) => es.SelectMany(_.scanErrors())
+                | Match(_, e, es) => e.scanErrors().Concat(es.SelectMany(_.scanErrors()))
             }
-            es.Concat(type.scanErrors().Select(e => (Error.Type(e), span)))
+            errors.Map(e => (e, span)).Concat(es).Concat(type.scanErrors().Select(e => (Error.Type(e), span)))
         }
     }
     

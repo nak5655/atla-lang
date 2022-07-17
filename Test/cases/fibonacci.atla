@@ -1,13 +1,8 @@
-﻿import System::Console
-import System::Int32
+﻿
+#fn fibonacci (n: Int): Int = match n
+#    | 0 => 0 | 1 => 1 | 2 => 1
+#    | _ => fibonacci (n - 2) + fibonacci (n - 1)
 
-fn main (args: Array String): Unit = do
-    Console::WriteLine "n>"
-    let n = Int32::TryParse (Console::ReadLine ())
-    Console::WriteLine (fibonacci n)
-
-fn fibonacci (n: Int): Int = match n
-    | 0 => 0
-    | 1 => 1
-    | 2 => 1
-    | _ => fibonacci (n - 2) + fibonacci (n - 1)
+fn fibonacci (n: Int): Int =
+    if  | n == 0 => 0 | n == 1 || n == 2 => 1
+        | else => fibonacci (n - 2) + fibonacci (n - 1)

@@ -75,5 +75,16 @@ namespace Test.HirTest
             Assert.AreEqual(typeof(int), (fnType.args.First() :> Type.Native).type);
             Assert.AreEqual(typeof(int), (fnType.ret :> Type.Native).type);
         }
+        
+        [Test]
+        public HirFibonacciTypingTest(): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            
+            def code = Misc.readCase("fibonacci.atla");
+            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            
+            def errors = thir.scanErrors().Distinct().ToList();
+            Assert.AreEqual(0, errors.Count());
+        }
     }
 }

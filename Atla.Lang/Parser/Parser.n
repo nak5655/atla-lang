@@ -147,16 +147,30 @@ namespace Atla.Lang.Parser
                     stmt.many1().map(ss => Expr.Block(ss).exSpan(ss)).onceExpr()
                 ).map((a, b) => b.exSpan(a)));
 
+                // If
+                def ifThenEntry = log("if_then_entry", delim("|")._and(expr._andL(delim("=>"))._and(expr.onceExpr()).map((p, e) => {
+                    IfEntry.Then(p, e).exSpan(e.span)
+                })).map((a, b) => b.exSpan(a)));
+                def ifElseEntry = log("if_else_entry", delim("|")._and(delim("else")._andL(delim("=>"))._andR(expr.onceExpr()).map(e => {
+                    IfEntry.Else(e).exSpan(e.span)
+                })).map((a, b) => b.exSpan(a)));
+                def ifExpr: Parser[Token, Expr] = log("if", delim("if")._and(
+                    ifThenEntry._or(ifElseEntry).many1().map(cs => {
+                        Expr.If(cs).exSpan(cs.Map(_.span))
+                    }).onceExpr()
+                ).map((a, b) => b.exSpan(a)).consumeBlock());
+                
+                // Match
                 def matchEntry = log("match_entry", delim("|")._and(pattern._andL(delim("=>"))._and(expr).map((p, e) => {
                     MatchEntry.Case(p, e).exSpan([p.span, e.span])
-                }).onceMatchEntry()).map((a, b) => b.exSpan(a)).consumeBlock());
+                })).map((a, b) => b.exSpan(a)));
                 def matchExpr: Parser[Token, Expr] = log("match", delim("match")._and(
                     expr._and(matchEntry.many1()).map((e, cs) => {
                         Expr.Match(e, cs).exSpan(e.span :: cs.Map(_.span))
                     }).onceExpr()
                 ).map((a, b) => b.exSpan(a)).consumeBlock());
                 
-                def factor = str._or(matchExpr)._or(blockExpr)._or(id)._or(int)._or(unit)._or(paren);
+                def factor = str._or(ifExpr)._or(matchExpr)._or(blockExpr)._or(id)._or(int)._or(unit)._or(paren);
             
                 // メンバーアクセス
                 def member = log("expr_member", factor._andL(delim("."))._and(tid).map((a, b) => Expr.Member(a, b.value).exSpan([a.span, b.span])));
@@ -172,20 +186,22 @@ namespace Atla.Lang.Parser
                 }));
                 
                 // 二項演算
-                // 優先順位と逆順なので注意(term3がpreced6, term6がpreced3になる)
-                def term6 = Enumerable.Range(3, 4).Reverse().Map(i => infixOp(i)).Fold(term2, (op, acc) => acc._and(op._and(acc).optional()).map((a, m_op_b) => {
-                    match (m_op_b) {
-                        | Some(op_b) => {
-                            def op = op_b[0];
-                            def b = op_b[1];
-                            def fn = Expr.Id(op.value).addSpan(op.span);
-                            Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
+                def binop = Enumerable.Range(2, 5).Reverse().Fold(term2, (i, acc) => {
+                    def op = infixOp(i);
+                    acc._and(op._and(acc).optional()).map((a, m_op_b) => {
+                        match (m_op_b) {
+                            | Some(op_b) => {
+                                def op = op_b[0];
+                                def b = op_b[1];
+                                def fn = Expr.Id(op.value).addSpan(op.span);
+                                Expr.Apply(fn, [a, b]).addSpan([a.span, b.span])
+                            }
+                            | _ => a
                         }
-                        | _ => a
-                    }
-                }));
+                    })
+                });
             
-                expr.impl = term6.inlineBlock();
+                expr.impl = binop.inlineBlock();
             }
             
             // Stmt
@@ -203,6 +219,7 @@ namespace Atla.Lang.Parser
             
             // Decls
             {
+                // Fn
                 def fnArg: Parser[Token, FnArg] = log("decl_fn_arg", delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
                     FnArg(a.value, b).exSpan([a.span, b.span])
                 }));
@@ -215,6 +232,7 @@ namespace Atla.Lang.Parser
                     })._andL(eoi()).onceDecl()
                 ).map((a, b) => b.exSpan(a)));
             
+                // Class
                 def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
                     def (s, t) = s_t: Token.Id * TypeHint;
                     ClassItem.Field(s.value, t, false, e)
@@ -237,6 +255,7 @@ namespace Atla.Lang.Parser
                     })._andL(eoi()).onceDecl()
                 ).map((a, b) => b.exSpan(a));
             
+                // Import
                 def importDecl = log("import", delim("import")._and(
                     tid._and(delim("::")._andR(tid).many()).map((x, xs) => {
                         def path = x.value :: xs.Map(t => t.value);
@@ -286,7 +305,7 @@ namespace Atla.Lang.Parser
         
         public onceDecl(this p: Parser[Token, Decl]): Parser[Token, Decl] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, Decl].Failure; // always it is failure
+                def failure = ret :> Result[Token, Decl].Failure; // ret is always failure
                 def ret = Decl.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
@@ -295,22 +314,13 @@ namespace Atla.Lang.Parser
         
         public onceClassItem(this p: Parser[Token, ClassItem]): Parser[Token, ClassItem] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, ClassItem].Failure; // always it is failure
+                def failure = ret :> Result[Token, ClassItem].Failure; // ret is always failure
                 def ret = ClassItem.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
             })
         }
-        
-        public onceMatchEntry(this p: Parser[Token, MatchEntry]): Parser[Token, MatchEntry] {
-            p.skipFail(ret => {
-                def failure = ret :> Result[Token, MatchEntry].Failure; // always it is failure
-                def ret = MatchEntry.Error(failure.reason);
-                ret.span = failure.failAt.position() :> Span;
-                ret
-            })
-        }
-        
+
         public exSpan[T](this ast: T, span: Span): T where T: HasSpan[T] {
             ast.addSpan(span)
         }

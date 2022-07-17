@@ -24,6 +24,26 @@ namespace Atla.Lang.Ast
                 
         }
         
+        public trans(scope: Hir.Scope, ast: Ast.Pattern): Hir.Pattern {
+            match (ast) {
+                | Ast.Pattern.Any => Hir.Pattern.Any()
+                | Ast.Pattern.Int(value) => Hir.Pattern.Int(value)
+            }
+        }
+        
+        public trans(scope: Hir.Scope, ast: Ast.MatchEntry): Hir.MatchEntry {
+            match (ast) {
+                | Ast.MatchEntry.Case(p, e) => Hir.MatchEntry(Hir.Scope.Block(scope), trans(scope, p), trans(scope, e))
+            }
+        }
+        
+        public trans(scope: Hir.Scope, ast: Ast.IfEntry): Hir.SwitchEntry {
+            match (ast) {
+                | Ast.IfEntry.Then(p, e) => Hir.SwitchEntry(Hir.Scope.Block(scope), trans(scope, p), trans(scope, e))
+                | Ast.IfEntry.Else(e) => Hir.SwitchEntry(Hir.Scope.Block(scope), Hir.Expr.Bool(true), trans(scope, e))
+            }
+        }
+        
         public trans(scope: Hir.Scope, ast: Ast.Stmt): Hir.Stmt {
             def stmt: Hir.Stmt = match (ast) {
                 | Ast.Stmt.Expr(expr) => Hir.Stmt.Expr(trans(scope, expr))
@@ -60,6 +80,8 @@ namespace Atla.Lang.Ast
                 | Ast.Expr.Member(expr, member) => Hir.Expr.Member(trans(scope, expr), member)
                 | Ast.Expr.StaticMember(objName, member) => Hir.Expr.StaticMember(objName, member)
                 | Ast.Expr.Apply(fn, args) => Hir.Expr.Apply(trans(scope, fn), args.Map(e => trans(scope, e)))
+                | Ast.Expr.If(entries) => Hir.Expr.Switch(entries.Map(en => trans(scope, en)))
+                | Ast.Expr.Match(e, entries) => Hir.Expr.Match(Hir.Scope.Block(scope), trans(scope, e), entries.Map(en => trans(scope, en)))
             }
             expr.typeHint = trans(ast.typeHint);
             expr.addSpan(ast.span)

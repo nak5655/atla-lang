@@ -98,17 +98,21 @@ namespace Atla.Lang.Hir
                 | Hir.Expr.String(s) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.String(s)))))
                 | Hir.Expr.Id(name) => {
                     def type = hir.type.pruned(); // TODO 毎回pruneしたくないのでキャッシュする
-                    def sym = scope.resolveVar(name, type);
-                    if (sym.isArg) {
-                        match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 名前が一致すればいい
-                            | Some(arg) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(arg))))
-                            | None => Result.Failure($"Could not find $name in arguments.")
+                    match (scope.resolveVar(name, type)) {
+                        | Some(sym) => {
+                            if (sym.isArg) {
+                                match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 名前が一致すればいい
+                                    | Some(arg) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(arg))))
+                                    | None => Result.Failure($"Could not find $name in arguments.")
+                                }
+                            } else {
+                                match (NCollectionsExtensions.Find(frame.locs, arg => arg.name == sym.name)) { // 名前が一致すればいい
+                                    | Some(loc) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(loc))))
+                                    | None => Result.Failure($"Could not find $name in locals.")
+                                }
+                            }
                         }
-                    } else {
-                        match (NCollectionsExtensions.Find(frame.locs, arg => arg.name == sym.name)) { // 名前が一致すればいい
-                            | Some(loc) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(loc))))
-                            | None => Result.Failure($"Could not find $name in locals.")
-                        }
+                        | _ => Result.Failure($"$name is not defined as $type type.")
                     }
                 }
                 | Hir.Expr.Apply(fn, args) => {

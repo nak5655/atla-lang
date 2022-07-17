@@ -20,9 +20,31 @@ namespace Atla.Lang.Ast
     }
     
     [Record]
-    public variant MatchEntry: HasSpan[MatchEntry] {
-        | Case { pattern: Pattern; expr: Expr; }
+    public variant IfEntry: HasSpan[IfEntry] {
+        | Then { pred: Expr; body: Expr; }
+        | Else { body: Expr; }
         | Error { reason: string }
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            match (this) {
+                | Error(s) => [(s, this.span)]
+                | Then(p, b) => p.scanErrors().Concat(b.scanErrors())
+                | Else(b) => b.scanErrors()
+            }
+        }
+    }
+    
+    [Record]
+    public variant MatchEntry: HasSpan[MatchEntry] {
+        | Case { pattern: Pattern; body: Expr; }
+        | Error { reason: string }
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            match (this) {
+                | Error(s) => [(s, this.span)]
+                | Case(p, b) => b.scanErrors() // TODO pattern.scanErrors()
+            }
+        }
     }
     
     [Record]
@@ -41,10 +63,24 @@ namespace Atla.Lang.Ast
         | Member { obj: Expr; member: string }
         | StaticMember { objName: string; member: string }
         | Apply { fn: Expr; args: list[Expr] }
+        | If { entries: list[IfEntry] }
         | Match { expr: Expr; entries: list[MatchEntry] }
         | Error { reason: string }
         
         public typeHint: option[TypeHint] = None();
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            match (this) {
+                | Error(s) => [(s, this.span)]
+                | Block(ss) => ss.SelectMany(_.scanErrors())
+                | Fn(_, b) => b.scanErrors()
+                | Member(obj, _) => obj.scanErrors()
+                | Apply(fn, args) => fn.scanErrors().Concat(args.SelectMany(_.scanErrors()))
+                | If(es) => es.SelectMany(_.scanErrors())
+                | Match (e, es) => e.scanErrors().Concat(es.SelectMany(_.scanErrors()))
+                | _ => []
+            }
+        }
     }
     
     public variant Stmt: HasSpan[Stmt] {
@@ -53,6 +89,16 @@ namespace Atla.Lang.Ast
         | Expr { expr: Ast.Expr }
         | Ret { expr: Ast.Expr }
         | Error { reason: string }
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            match (this) {
+                | Error(s) => [(s, this.span)]
+                | Let(_, e) => e.scanErrors()
+                | Assign(_, e) => e.scanErrors()
+                | Expr(e) => e.scanErrors()
+                | Ret(e) => e.scanErrors()
+            }
+        }
     }
     
     public variant ClassItem: HasSpan[ClassItem] {
@@ -70,7 +116,8 @@ namespace Atla.Lang.Ast
         public scanErrors(): IEnumerable[(string * Span)] {
             match (this) {
                 | Error(s) => [(s, this.span)]
-                // TODO
+                | Fn(_, _, _, e) => e.scanErrors()
+                | Class(_, cis) => [] // TODO
                 | _ => []
             }
         }

@@ -19,7 +19,7 @@ namespace Atla.Lang
             name: string;
             
             public override ToString(): string {
-                $"$name type is not defined."
+                $"Type $name is not defined."
             }
         }
         | RecursiveReference { a: Type; b: Type }
@@ -32,6 +32,7 @@ namespace Atla.Lang
             }
         }
         | InferenceUnmatched { types: list[Type] }
+        | InferenceFailure { message: string }
     }
     
     public interface TypeScope {
@@ -151,6 +152,7 @@ namespace Atla.Lang
         
         // Primery Types
         public static UNIT_NAME: string = "Unit";
+        public static BOOL_NAME: string = "Bool";
         public static INT_NAME: string = "Int";
         public static STRING_NAME: string = "String";
         

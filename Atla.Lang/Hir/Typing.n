@@ -48,6 +48,7 @@ namespace Atla.Lang.Hir
             
             match (hir) {
                 | Unit => hir.type.unify(scope.globalScope().resolveType(Type.UNIT_NAME)) // オーバーロード対策で念のためGlobalScopeで名前解決する
+                | Bool => hir.type.unify(scope.globalScope().resolveType(Type.BOOL_NAME))
                 | Int => hir.type.unify(scope.globalScope().resolveType(Type.INT_NAME))
                 | String => hir.type.unify(scope.globalScope().resolveType(Type.STRING_NAME))
                 | Block(blockScope, stmts) => {
@@ -82,9 +83,13 @@ namespace Atla.Lang.Hir
                     hir.type.unify(fnType);
                 }
                 | Id(name) => {
-                    def var = scope.resolveVar(name, expected);
-                    var.type.unify(expected);
-                    hir.type.unify(var.type);
+                    match (scope.resolveVar(name, expected)) {
+                        | Some(var) => {
+                            var.type.unify(expected);
+                            hir.type.unify(var.type);
+                        }
+                        | _ => hir.errors.Add(Error.UndefinedReference(name, expected))
+                    }
                 }
                 | Member(expr, name) => {
                     typing(scope, expr, Type.Unknown())
@@ -142,6 +147,16 @@ namespace Atla.Lang.Hir
                             
                             hir.type.unify(y)
                         }
+                        | Type.Error => () // エラーならそれ以上推論しない
+                        | t => fn.type.errors.Add(TypeError.InferenceFailure($"Could not infer $t as a function."))
+                    }
+                }
+                | Switch(entries) => {
+                    foreach (entry in entries) {
+                        // 条件式をBoolとして型推論
+                        typing(scope, entry.pred, scope.globalScope().resolveType(Type.BOOL_NAME));
+                        // bodyスコープでこの式の型として型推論
+                        typing(entry.bodyScope, entry.body, hir.type);
                     }
                 }
             }
@@ -157,8 +172,12 @@ namespace Atla.Lang.Hir
                 | Hir.Stmt.Assign(name, rhs) => {
                     typing(scope, rhs, Type.Unknown());
                     // 右辺から左辺の型を推論
-                    def dest = scope.resolveVar(name, Type.Unknown());
-                    _ = dest.type.unify(rhs.type)
+                    match (scope.resolveVar(name, rhs.type)) {
+                        | Some(dest) => {
+                            _ = dest.type.unify(rhs.type)
+                        }
+                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(name, rhs.type))
+                    }
                 }
                 | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Unknown())
                 | Hir.Stmt.Return(value) => {

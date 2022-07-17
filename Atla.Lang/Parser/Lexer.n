@@ -184,6 +184,7 @@ namespace Atla.Lang.Parser
         signDelims: HashSet[string];
         
         opSigns: HashSet[char];
+        infixOp2: HashSet[string];
         infixOp3: HashSet[string];
         infixOp4: HashSet[string];
         infixOp5: HashSet[string];
@@ -227,17 +228,18 @@ namespace Atla.Lang.Parser
                 "true", "false", // boolean
             ];
             def delimSigns = [
-                "->", "~>", "=>", "::", "||", "&&",
+                "->", "~>", "=>", "::",
                 "=", "(", ")", "<", ">", "[", "]", "{", "}", ":", ".", "-" "+", "*", "/", "~", "|", "&" // signs
             ];
             
             opSigns = HashSet("+-*/%|&><!=.");
             
+            infixOp2 = HashSet(["||"]);
             infixOp3 = HashSet(["==", "!="]);
             infixOp4 = HashSet([".."]);
             infixOp5 = HashSet(["+", "-"]);
             infixOp6 = HashSet(["*", "/", "%"]);
-            def infixOps = HashSet(infixOp3.Concat(infixOp4).Concat(infixOp5).Concat(infixOp6));
+            def infixOps = HashSet(infixOp2.Concat(infixOp3).Concat(infixOp4).Concat(infixOp5).Concat(infixOp6));
         
             comment = char('#')._and(satisfy("comment", c => c.char != '\n').many()).map((s, cs) => {
                 def content = SourceString(cs);
@@ -262,7 +264,8 @@ namespace Atla.Lang.Parser
             op = infixOps.Map(op => {
                 phrase(op, op.ToArray().ToNList(), (i, a) => i.char == a).map(cs => {
                     def s = SourceString(cs);
-                    def precedence = if (infixOp3.Contains(s.string)) 3
+                    def precedence = if (infixOp2.Contains(s.string)) 2
+                    else if (infixOp3.Contains(s.string)) 3
                     else if (infixOp4.Contains(s.string)) 4
                     else if (infixOp5.Contains(s.string)) 5
                     else if (infixOp6.Contains(s.string)) 6
