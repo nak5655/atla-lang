@@ -50,4 +50,8 @@ namespace Atla.Lang
             vs.SelectMany(v => v)
         }
     }
+    
+    public module ObjectMiscExtensions {
+        public let[A](this a: A, f: A -> Void): A { _ = f(a); a }
+    }
 }

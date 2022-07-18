@@ -1,0 +1,38 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+
+namespace Atla.Lang
+{
+    // Procedure
+    public variant Proc {
+        | DstArg2 { body: Symbol * Mir.Value * Mir.Value -> list[Mir.Ins] }
+    }
+    
+    public variant SymbolKind {
+        | Local
+        | Arg
+        | Method { methodInfo: MethodInfo } // ラムダ式はHirではLocal|Argで、MirにするときにMethodに変換する
+        | InlineMethod { proc: Proc }
+    }
+    
+    [Record]
+    public class Symbol {
+        public mutable name: string;
+        public mutable type: Type;
+        public mutable kind: SymbolKind;
+        
+        public isArg(): bool {
+            match (kind) {
+                | SymbolKind.Arg => true
+                | _ => false
+            }
+        }
+    }
+}

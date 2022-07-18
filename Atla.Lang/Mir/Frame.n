@@ -23,12 +23,20 @@ namespace Atla.Lang.Mir
         public args: List[Symbol] = List();
         public locs: List[Symbol] = List();
         
+        public declareArg(symbol: Symbol): void {
+            args.Add(symbol);
+        }
+        
         public declareLocal(symbol: Symbol): void {
             locs.Add(symbol);
         }
         
         public declareTemp(type: System.Type): Symbol {
-            def sym = Symbol($"tmp`$(locs.Count())", type);
+            declareTemp(Atla.Lang.Type.Native(type))
+        }
+        
+        public declareTemp(type: Atla.Lang.Type): Symbol {
+            def sym = Symbol($"tmp`$(locs.Count())", type, SymbolKind.Local());
             locs.Add(sym);
             sym
         }

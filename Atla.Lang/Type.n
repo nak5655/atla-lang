@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Reflection;
 
 using Atla.Lang.Parse;
 using Atla.Lang;
@@ -136,7 +137,7 @@ namespace Atla.Lang
             
             public static from(methodInfo: System.Reflection.MethodInfo): Fn {
                 def pTypes = methodInfo.GetParameters().Map(p => p.ParameterType);
-                Fn(pTypes.Map(t => Type.Native(t)).ToNList(), Type.Native(methodInfo.ReturnType))
+                Fn(pTypes.Map(t => Type.Native(t)).ToNList(), Type.Native(methodInfo.ReturnType));
             }
         }
         | Generics { _base: Type; _params: list[Type] }
@@ -156,6 +157,7 @@ namespace Atla.Lang
         public static INT_NAME: string = "Int";
         public static STRING_NAME: string = "String";
         
+        mutable _systemType: System.Type; // キャッシュ
         public errors: List[TypeError] = List();
         
         public canUnify(other: Type): bool {
@@ -256,23 +258,26 @@ namespace Atla.Lang
         }
         
         public ToSystemType(): System.Type {
-            match (this.pruned()) {
-                // TODO
-                | Native(t) => t
-                | Generics(b, ps) => {
-                    def _base = b.ToSystemType();
-                    if (_base.IsGenericTypeDefinition)
-                        _base.MakeGenericType(ps.Map(_.ToSystemType()).ToArray())
-                    else if (_base == typeof(System.Array)) { // TODO typeofは遅い? キャッシュしたほうがいいかも?
-                        if (ps.Length == 1)
-                            ps.First().ToSystemType().MakeArrayType()
-                        else
-                            throw Exception("Could not make array type of plural types.") // TODO Result[System.Type]
-                    } else {
-                        throw Exception("Notimplemented") // TODO
+            when (_systemType == null) {
+                _systemType = match (this.pruned()) {
+                    // TODO
+                    | Native(t) => t
+                    | Generics(b, ps) => {
+                        def _base = b.ToSystemType();
+                        if (_base.IsGenericTypeDefinition)
+                            _base.MakeGenericType(ps.Map(_.ToSystemType()).ToArray())
+                        else if (_base == typeof(System.Array)) { // TODO typeofは遅い? キャッシュしたほうがいいかも?
+                            if (ps.Length == 1)
+                                ps.First().ToSystemType().MakeArrayType()
+                            else
+                                throw Exception("Could not make array type of plural types.") // TODO Result[System.Type]
+                        } else {
+                            throw Exception("Notimplemented") // TODO
+                        }
                     }
                 }
             }
+            _systemType
         }
         
         public override GetHashCode() : int {

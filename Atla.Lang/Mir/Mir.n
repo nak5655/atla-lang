@@ -18,14 +18,9 @@ using System.Reflection.Emit;
 namespace Atla.Lang.Mir
 {
     public variant Imm {
+        | Bool { value: bool }
         | Int { value: int }
         | String { value: string }
-    }
-    
-    [Record]
-    public class Symbol {
-        public name: string;
-        public type: System.Type;
     }
     
     public variant Value {
@@ -33,11 +28,19 @@ namespace Atla.Lang.Mir
         | Sym { value: Symbol }
     }
     
+    // ここではまだスタックマシンじゃないので注意 (K正規化まではしてる)
     public variant Ins {
         | Assign {
             name: Symbol;
             value: Value;
         }
+        | Add { dest: Symbol; lhs: Value; rhs: Value } // 算術演算
+        | Sub { dest: Symbol; lhs: Value; rhs: Value }
+        | Mul { dest: Symbol; lhs: Value; rhs: Value }
+        | Div { dest: Symbol; lhs: Value; rhs: Value }
+        | Or { dest: Symbol; lhs: Value; rhs: Value } // 論理演算
+        | And { dest: Symbol; lhs: Value; rhs: Value }
+        | Eq { dest: Symbol; lhs: Value; rhs: Value } // 同値
         | Call {
             method: MethodInfo;
             args: list[Value];
@@ -52,6 +55,10 @@ namespace Atla.Lang.Mir
             value: Value;
         }
         | Jump {
+            label: Label;
+        }
+        | JumpTrue {
+            value: Value;
             label: Label;
         }
         | Label
@@ -76,7 +83,7 @@ namespace Atla.Lang.Mir
     }
     
     public interface MethodContainer {
-        defineMethod(name: string, args: list[System.Type], ret: System.Type): Method
+        defineMethod(name: string, args: list[System.Type], ret: System.Type): Method;
     }
     
     public class Type: MethodContainer {

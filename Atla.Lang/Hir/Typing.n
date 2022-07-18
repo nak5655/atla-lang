@@ -30,7 +30,7 @@ namespace Atla.Lang.Hir
             // first, declare members
             foreach ((id, member) in hir.members.KeyValuePairs) {
                 foreach (overload in member) {
-                    hir.scope.declareVar(id, overload.type)
+                    hir.scope.declareLocal(id, overload.type)
                 }
             }
             // next, analyze the type hints.
@@ -167,7 +167,7 @@ namespace Atla.Lang.Hir
             match (hir) {
                 | Hir.Stmt.Let(name, rhs) => {
                     typing(scope, rhs, Type.Unknown()); // TODO type hint
-                    scope.declareVar(name, rhs.type); // 右辺を処理してから変数宣言
+                    scope.declareLocal(name, rhs.type); // 右辺を処理してから変数宣言
                 }
                 | Hir.Stmt.Assign(name, rhs) => {
                     typing(scope, rhs, Type.Unknown());

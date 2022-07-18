@@ -22,17 +22,34 @@ namespace Atla.Lang.Hir
         public res: option[Mir.Value]; // voidのときnone
     }
     
+    variant Callable {
+        | MethodInfo { methodInfo: System.Reflection.MethodInfo }
+        | Inline { proc: Proc }
+    }
+    
     public class Trans
     {
-        public getMethodInfo(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr): Result[MethodInfo] {
+        getCallable(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr): Result[Callable] {
             match (hir) { 
+                | Hir.Expr.Id(s) => {
+                    def ty = hir.type.pruned();
+                    def msym = scope.resolveVar(s, ty);
+                    match (msym) {
+                        | Some(sym) => match (sym.kind) {
+                            | SymbolKind.Method(mi) => Result.Success(Callable.MethodInfo(mi))
+                            | SymbolKind.InlineMethod(proc) => Result.Success(Callable.Inline(proc))
+                        }
+                        | _ => Result.Failure($"$hir is not a function.")
+                    }
+                }
                 | fn is Hir.Expr.Fn => {
                     // ラムダ式に名前を付けて定義
+                    // TODO クロージャー
                     def resMet = addMethod(mc, scope, fn);
                     
                     match (resMet) {
                         | Result.Success(met) => {
-                            Result.Success(met.builder)
+                            Result.Success(Callable.MethodInfo(met.builder))
                         }
                         | Result.Failure(e) => Result.Failure(e)
                     }
@@ -52,7 +69,7 @@ namespace Atla.Lang.Hir
                                 }
                             });
                             if (mi.IsSome) {
-                                Result.Success(mi.Value)
+                                Result.Success(Callable.MethodInfo(mi.Value))
                             } else {
                                 Result.Failure("$hir does not exist.")
                             }
@@ -95,21 +112,21 @@ namespace Atla.Lang.Hir
         public trans(mc: Mir.MethodContainer, frame: Mir.Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormalExpr] {
             match (hir) {
                 // TODO
+                | Hir.Expr.Unit => Result.Success(KNormalExpr([], None())) // TODO Unit Singleton
+                | Hir.Expr.Bool(value) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.Bool(value)))))
+                | Hir.Expr.Int(value) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.Int(value)))))
                 | Hir.Expr.String(s) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.String(s)))))
                 | Hir.Expr.Id(name) => {
                     def type = hir.type.pruned(); // TODO 毎回pruneしたくないのでキャッシュする
                     match (scope.resolveVar(name, type)) {
-                        | Some(sym) => {
-                            if (sym.isArg) {
-                                match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 名前が一致すればいい
-                                    | Some(arg) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(arg))))
-                                    | None => Result.Failure($"Could not find $name in arguments.")
-                                }
-                            } else {
-                                match (NCollectionsExtensions.Find(frame.locs, arg => arg.name == sym.name)) { // 名前が一致すればいい
-                                    | Some(loc) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(loc))))
-                                    | None => Result.Failure($"Could not find $name in locals.")
-                                }
+                        | Some(sym) => match (sym.kind) {
+                            | SymbolKind.Arg =>  match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 同じ名前の引数はないので名前が一致すればいい
+                                | Some(arg) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(arg))))
+                                | None => Result.Failure($"Could not find $name in arguments.")
+                            }
+                            | SymbolKind.Local => match (NCollectionsExtensions.Find(frame.locs, loc => loc.name == sym.name && loc.type.canUnify(sym.type))) { // TODO 同値比較でいい?(symをそのままつかえばいい?)
+                                | Some(loc) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(loc))))
+                                | None => Result.Failure($"Could not find $name in locals.")
                             }
                         }
                         | _ => Result.Failure($"$name is not defined as $type type.")
@@ -127,17 +144,34 @@ namespace Atla.Lang.Hir
                     }
                     def kArgs = kArgRs.Map(a => a.getResult().Value);
                     
-                    match (getMethodInfo(mc, scope, fn)) {
-                        | Result.Success(m) => {
-                            def execArgs = kArgs.SelectMany(_.proc);
+                    
+                    match (getCallable(mc, scope, fn)) {
+                        | Result.Success(Callable.MethodInfo(m)) => {
+                            def porcArgs = kArgs.SelectMany(_.proc);
                             def resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
                             
                             if (m.ReturnType == typeof(void)) {
-                                Result.Success(KNormalExpr(execArgs.Concat([Mir.Ins.Call(m, resArgs)]), None()))
+                                Result.Success(KNormalExpr(porcArgs.Concat([Mir.Ins.Call(m, resArgs)]), None()))
                             } else {
                                 def tmp = frame.declareTemp(m.ReturnType);
                             
-                                Result.Success(KNormalExpr(execArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Some(Mir.Value.Sym(tmp))))
+                                Result.Success(KNormalExpr(porcArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Some(Mir.Value.Sym(tmp))))
+                            }
+                        }
+                        | Result.Success(Callable.Inline(proc)) => {
+                            def porcArgs = kArgs.SelectMany(_.proc);
+                            def resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
+                            
+                            match (fn.type.pruned()) {
+                                | Atla.Lang.Type.Fn(_, ret) => {
+                                    def tmp = frame.declareTemp(ret);
+                                    // 引数の数を確認して呼び出し命令生成
+                                    def body = match (proc) {
+                                        | Proc.DstArg2(body) => body(tmp, resArgs.Nth(0), resArgs.Nth(1))
+                                    };
+                                    Result.Success(KNormalExpr(porcArgs.Concat(body), Some(Mir.Value.Sym(tmp))))
+                                }
+                                | _ => Result.Failure($"$fn must be a function.")
                             }
                         }
                         | Result.Failure(e) => Result.Failure(e)
@@ -149,7 +183,7 @@ namespace Atla.Lang.Hir
                     // TODO 返り値がvoidの時
                     
                     // ブロックの帰り値を確保
-                    blockScope.retSymbol = Mir.Symbol($"_block_`$(frame.locs.Count())", blockScope.retType.ToSystemType());
+                    blockScope.retSymbol = Symbol($"_block_`$(frame.locs.Count())", blockScope.retType, SymbolKind.Local());
                     
                     def stmts = ss.ToNList();
                     def body = if (stmts.Length > 0) {
@@ -195,6 +229,45 @@ namespace Atla.Lang.Hir
                     }
                 }
                 | Hir.Expr.Fn => throw Exception("")
+                | Hir.Expr.Switch(ents) => {
+                    mutable racc = Result.Success(List());
+                    def endLabel = Mir.Ins.Label(); // switch式を抜けるラベル
+                    def tmp = frame.declareTemp(hir.type.pruned().ToSystemType()); // switch式の結果
+                    
+                    def bodies = ents.Map(ent => (Mir.Ins.Label(), trans(mc, frame, scope, ent.body)));
+                    
+                    // 分岐命令
+                    foreach (i in Enumerable.Range(0, ents.Count())) {
+                        def ent = ents.Nth(i);
+                        def (label, _) = bodies.Nth(i);
+                        def mne = trans(mc, frame, scope, ent.pred);
+                        racc = racc.bind(acc => mne.bind(ne => match (ne.res) {
+                            // 条件式がTrueならbodyにジャンプ
+                            | Some(v) => Result.Success(acc.Concat(ne.proc).Concat([
+                                Mir.Ins.JumpTrue(v, label)
+                            ]))
+                            | _ => Result.Failure($"Switch Predicate $ent.pred is not a Value.")
+                        }));
+                    }
+                    
+                    // 分岐先
+                    foreach (i in Enumerable.Range(0, ents.Count())) {
+                        def ent = ents.Nth(i);
+                        def (label, rbody) = bodies.Nth(i);
+                        racc = racc.bind(acc => rbody.bind(body => match (body.res) {
+                            | Some(v) => {
+                                // 分岐ラベルに続けてボディを追加
+                                Result.Success(acc.Concat([label]).Concat(body.proc).Concat([
+                                    Mir.Ins.Assign(tmp, v),
+                                    Mir.Ins.Jump(endLabel), // 分岐の終わりまでジャンプ
+                                ]))
+                            }
+                            | _ => Result.Failure($"Switch Entry $ent should return a Value.")
+                        }));
+                    }
+                    
+                    racc.map(r => KNormalExpr(r, Some(Mir.Value.Sym(tmp))))
+                }
             }
         }
          
@@ -210,7 +283,7 @@ namespace Atla.Lang.Hir
         
         public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr.Fn): Result[Mir.Method] {
             def name = $"_func_`$(scope.varTable.Count())";
-            scope.declareVar(name, hir.type);
+            scope.declareLocal(name, hir.type);
             addMethod(mc, scope, name, hir);
         }
         
@@ -223,6 +296,19 @@ namespace Atla.Lang.Hir
             def fnType = type :> Type.Fn;
             
             def method = mc.defineMethod(name, fnType.args.Map(_.ToSystemType()), fnType.ret.ToSystemType());
+            foreach (i in Enumerable.Range(0, fnType.args.Length)) {
+                match (hir.scope.resolveArgNth(i)) {
+                    | Some(sym) when sym.name == hir.args.Nth(i).name => method.frame.declareArg(sym) // 一応名前チェックする
+                    | _ => return Result.Failure($"Failed to create method frame. Could not find the argument $(hir.args.Nth(i).name) in function scope.")
+                }
+            }
+            
+            // Bodyを変換する前にSymbolにMethodInfoを設定する（再帰関数に対応できる）
+            match (scope.resolveVar(name, fnType)) {
+                | Some(Symbol as sym) => sym.kind = SymbolKind.Method(method.builder)
+                | _ => return Result.Failure($"Could not resolve method $name as $fnType.")
+            }
+            
             match (trans(mc, method.frame, hir.scope, hir.body)) {
                 | Result.Success(proc) => method.body = proc.proc.ToList().ToNList(); // 実行だけでいいはず proc.resは使わない
                 | Result.Failure(e) => return Result.Failure(e);

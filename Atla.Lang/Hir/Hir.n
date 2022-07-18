@@ -182,6 +182,7 @@ namespace Atla.Lang.Hir
         }
         | Id {
             public name: string;
+            // TODO option[Symbol]をもつ?
             
             public override ToString(): string {
                 $"Id($name)"
