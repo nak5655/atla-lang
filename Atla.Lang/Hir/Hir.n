@@ -20,6 +20,7 @@ using Atla.Lang.Parse;
 namespace Atla.Lang.Hir
 {
     public variant Error {
+        | IllegalIndentation { message: string }
         | DuplicatedDeclaration { name: string; type: Type; already: Type }
         | UndefinedReference {
             name: string; type: Atla.Lang.Type;
@@ -53,7 +54,7 @@ namespace Atla.Lang.Hir
         }
     }
     
-    public variant Stmt: HasSpan[Expr] {
+    public variant Stmt: HasSpan[Stmt] {
         | Expr { expr: Hir.Expr }
         | Let { name: string; expr: Hir.Expr }
         | Assign { name: string; expr: Hir.Expr }
@@ -285,8 +286,10 @@ namespace Atla.Lang.Hir
             overloads.Add(fn)
         }
         
+        public errors: List[Error] = List();
+        
         public scanErrors(): IEnumerable[(Error * Span)] {
-            members.Values.SelectMany(_.SelectMany(_.scanErrors()))
+            errors.Map(e => (e, Span.zero())).Concat(members.Values.SelectMany(_.SelectMany(_.scanErrors())))
         }
     }
     

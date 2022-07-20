@@ -112,7 +112,7 @@ namespace Atla.Lang.Hir
                             def overloads = nt.GetMethods().Filter(methodInfo => {
                                 if (methodInfo.Name == name) {
                                     match (hir.type.pruned()) {
-                                        | it is Type.Fn => it.canUnify(Type.Fn.from(methodInfo))
+                                        | it is Type.Fn => it.canUnify(methodInfo.toFnType(scope))
                                         | _ => true
                                     }
                                 } else {
@@ -120,9 +120,9 @@ namespace Atla.Lang.Hir
                                 }
                             });
                             if (overloads.Length == 1) {
-                                _ = hir.type.unify(Type.Fn.from(overloads.First()))
+                                _ = hir.type.unify(overloads.First().toFnType(scope))
                             } else if (overloads.Length > 1) {
-                                hir.type.errors.Add(TypeError.Ambiguous(overloads.Map(m => Type.Fn.from(m))))
+                                hir.type.errors.Add(TypeError.Ambiguous(overloads.Map(m => m.toFnType(scope))))
                             } else {
                                 hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
                             }
@@ -186,5 +186,17 @@ namespace Atla.Lang.Hir
                 }
             }
         }
+    }
+    
+    public module HirTypingExtensions {
+        public static toFnType(this methodInfo: System.Reflection.MethodInfo, scope: Scope): Atla.Lang.Type.Fn {
+            def pTypes = methodInfo.GetParameters().Map(p => p.ParameterType);
+            def argTypes = if (pTypes.IsEmpty())
+                [scope.globalScope().resolveType(Type.UNIT_NAME)] // 引数がないときは代わりにUnitを引数とする
+            else
+                pTypes.Map(t => Type.Native(t)).ToNList();
+            Atla.Lang.Type.Fn(argTypes, Type.Native(methodInfo.ReturnType));
+        }
+        
     }
 }

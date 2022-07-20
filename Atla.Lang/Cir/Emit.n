@@ -57,11 +57,19 @@ namespace Atla.Lang.Cir
                     | _ => gen.Emit(OpCodes.Ldc_I4, value)
                 }
                 | Cir.Ins.LdStr(str) => gen.Emit(OpCodes.Ldstr, str)
+                | Cir.Ins.Add => gen.Emit(OpCodes.And)
+                | Cir.Ins.Sub => gen.Emit(OpCodes.Sub)
+                | Cir.Ins.Mul => gen.Emit(OpCodes.Mul)
+                | Cir.Ins.Div => gen.Emit(OpCodes.Div)
+                | Cir.Ins.Or  => gen.Emit(OpCodes.Or)
+                | Cir.Ins.And => gen.Emit(OpCodes.And)
+                | Cir.Ins.Eq  => gen.Emit(OpCodes.Ceq)
                 | Cir.Ins.Call(method) => gen.Emit(OpCodes.Call, method)
                 | Cir.Ins.Ret => gen.Emit(OpCodes.Ret)
                 | Cir.Ins.Nop => gen.Emit(OpCodes.Nop)
                 | Cir.Ins.MarkLabel(label) => gen.MarkLabel(label.get(gen))
                 | Cir.Ins.BrS(label) => gen.Emit(OpCodes.Br_S, label.get(gen))
+                | Cir.Ins.BrTrueS(label) => gen.Emit(OpCodes.Brtrue_S, label.get(gen))
             }
         }
         

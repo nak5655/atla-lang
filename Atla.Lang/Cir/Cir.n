@@ -34,13 +34,21 @@ namespace Atla.Lang.Cir
         | StLoc { index: int }
         | LdArg { index: int }
         | StArg { index: int }
-        | LdStr { str: string }
         | LdInt32 { value: int }
+        | LdStr { str: string }
+        | Add
+        | Sub
+        | Mul
+        | Div
+        | Or
+        | And
+        | Eq
         | Call { method: MethodInfo }
         | Ret
         | Nop
         | MarkLabel { label: Label }
         | BrS { label: Label } // jump
+        | BrTrueS { label: Label }
     }
     
     [Record]

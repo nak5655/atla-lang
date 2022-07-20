@@ -15,6 +15,7 @@ using System.Reflection.Emit;
 // 関数のローカル変数のスタック位置が確定 -> 変数名を削除して添え字でアクセスできる
 // 関数や型はMethodInfoとSystem.Typeで参照する
 // K正規化済み
+// TODO 同じMarkLabelが複数ないかチェック
 namespace Atla.Lang.Mir
 {
     public variant Imm {
@@ -28,25 +29,35 @@ namespace Atla.Lang.Mir
         | Sym { value: Symbol }
     }
     
+    public enum OpCode {
+        | Add // 算術演算
+        | Sub
+        | Mul
+        | Div
+        | Or // 論理演算
+        | And
+        | Eq // 同値
+    }
+    
+    public class Label {
+            public override ToString(): string {
+                $"Label($(GetHashCode()))"
+            }
+    }
+    
     // ここではまだスタックマシンじゃないので注意 (K正規化まではしてる)
     public variant Ins {
         | Assign {
             name: Symbol;
             value: Value;
         }
-        | Add { dest: Symbol; lhs: Value; rhs: Value } // 算術演算
-        | Sub { dest: Symbol; lhs: Value; rhs: Value }
-        | Mul { dest: Symbol; lhs: Value; rhs: Value }
-        | Div { dest: Symbol; lhs: Value; rhs: Value }
-        | Or { dest: Symbol; lhs: Value; rhs: Value } // 論理演算
-        | And { dest: Symbol; lhs: Value; rhs: Value }
-        | Eq { dest: Symbol; lhs: Value; rhs: Value } // 同値
+        | TAC { dest: Symbol; lhs: Value; op: OpCode; rhs: Value } // three addess code
         | Call {
             method: MethodInfo;
             args: list[Value];
         }
         | CallAssign {
-            name: Symbol;
+            dst: Symbol;
             method: MethodInfo;
             args: list[Value];
         }
@@ -56,12 +67,26 @@ namespace Atla.Lang.Mir
         }
         | Jump {
             label: Label;
+            
+            public override ToString(): string {
+                $"Jump $label"
+            }
         }
         | JumpTrue {
             value: Value;
             label: Label;
+            
+            public override ToString(): string {
+                $"JumpTrue $value $label"
+            }
         }
-        | Label
+        | MarkLabel {
+            label: Label;
+            
+            public override ToString(): string {
+                $"MarkLabel $label"
+            }
+        }
     }
     
     public class Method {

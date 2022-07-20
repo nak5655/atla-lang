@@ -14,6 +14,7 @@ using Atla.Lang.Hir;
 using Atla.Lang.Mir;
 
 // K正規化
+// TODO Mir.from に変更(HIRがMIRの詳細に依存すべきではない)
 namespace Atla.Lang.Hir
 {
     [Record]
@@ -61,7 +62,7 @@ namespace Atla.Lang.Hir
                             def mi = nt.GetMethods().Find(methodInfo => {
                                 if (methodInfo.Name == name) {
                                     match (hir.type.pruned()) {
-                                        | it is Type.Fn => it.canUnify(Type.Fn.from(methodInfo))
+                                        | it is Type.Fn => it.canUnify(methodInfo.toFnType(scope))
                                         | _ => true
                                     }
                                 } else {
@@ -144,22 +145,28 @@ namespace Atla.Lang.Hir
                     }
                     def kArgs = kArgRs.Map(a => a.getResult().Value);
                     
-                    
                     match (getCallable(mc, scope, fn)) {
                         | Result.Success(Callable.MethodInfo(m)) => {
-                            def porcArgs = kArgs.SelectMany(_.proc);
-                            def resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
+                            mutable procArgs = kArgs.SelectMany(_.proc);
+                            mutable resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
+                            
+                            // 引数がvoidのみの時
+                            when (args.Length == 1 && args.First().type.ToSystemType() == typeof(void)) {
+                                procArgs = [];
+                                resArgs = [];
+                            }
                             
                             if (m.ReturnType == typeof(void)) {
-                                Result.Success(KNormalExpr(porcArgs.Concat([Mir.Ins.Call(m, resArgs)]), None()))
+                                // 返り値がvoidのとき
+                                Result.Success(KNormalExpr(procArgs.Concat([Mir.Ins.Call(m, resArgs)]), None()))
                             } else {
                                 def tmp = frame.declareTemp(m.ReturnType);
                             
-                                Result.Success(KNormalExpr(porcArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Some(Mir.Value.Sym(tmp))))
+                                Result.Success(KNormalExpr(procArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Some(Mir.Value.Sym(tmp))))
                             }
                         }
                         | Result.Success(Callable.Inline(proc)) => {
-                            def porcArgs = kArgs.SelectMany(_.proc);
+                            def procArgs = kArgs.SelectMany(_.proc);
                             def resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
                             
                             match (fn.type.pruned()) {
@@ -169,7 +176,7 @@ namespace Atla.Lang.Hir
                                     def body = match (proc) {
                                         | Proc.DstArg2(body) => body(tmp, resArgs.Nth(0), resArgs.Nth(1))
                                     };
-                                    Result.Success(KNormalExpr(porcArgs.Concat(body), Some(Mir.Value.Sym(tmp))))
+                                    Result.Success(KNormalExpr(procArgs.Concat(body), Some(Mir.Value.Sym(tmp))))
                                 }
                                 | _ => Result.Failure($"$fn must be a function.")
                             }
@@ -230,11 +237,11 @@ namespace Atla.Lang.Hir
                 }
                 | Hir.Expr.Fn => throw Exception("")
                 | Hir.Expr.Switch(ents) => {
-                    mutable racc = Result.Success(List());
-                    def endLabel = Mir.Ins.Label(); // switch式を抜けるラベル
+                    mutable racc = Result.Success([]);
+                    def endLabel = Mir.Label(); // switch式を抜けるラベル
                     def tmp = frame.declareTemp(hir.type.pruned().ToSystemType()); // switch式の結果
                     
-                    def bodies = ents.Map(ent => (Mir.Ins.Label(), trans(mc, frame, scope, ent.body)));
+                    def bodies = ents.Map(ent => (Mir.Label(), trans(mc, frame, scope, ent.body)));
                     
                     // 分岐命令
                     foreach (i in Enumerable.Range(0, ents.Count())) {
@@ -257,7 +264,7 @@ namespace Atla.Lang.Hir
                         racc = racc.bind(acc => rbody.bind(body => match (body.res) {
                             | Some(v) => {
                                 // 分岐ラベルに続けてボディを追加
-                                Result.Success(acc.Concat([label]).Concat(body.proc).Concat([
+                                Result.Success(acc.Concat([Mir.Ins.MarkLabel(label)]).Concat(body.proc).Concat([
                                     Mir.Ins.Assign(tmp, v),
                                     Mir.Ins.Jump(endLabel), // 分岐の終わりまでジャンプ
                                 ]))
@@ -266,7 +273,7 @@ namespace Atla.Lang.Hir
                         }));
                     }
                     
-                    racc.map(r => KNormalExpr(r, Some(Mir.Value.Sym(tmp))))
+                    racc.map(r => KNormalExpr(r.Concat([Mir.Ins.MarkLabel(endLabel)]), Some(Mir.Value.Sym(tmp))))
                 }
             }
         }

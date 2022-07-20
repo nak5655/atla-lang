@@ -13,12 +13,19 @@ namespace Atla.Lang
     public class Misc
     {
         public static updateModule(asm: Hir.Assembly, name: string, code: string): Hir.Module {
+            // タブ文字を置き換え
+            def src = code.Replace("\t", "    ");
+            def foundTab = src.Length != code.Length;
+            
             def lexer = Atla.Lang.Parser.Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value;
+            def tokens = lexer.tokenize(src).getResult().Value;
             def parser = Atla.Lang.Parser.Parser();
             def ast = parser.mod.parse(Atla.Lang.Parser.TokenInput(tokens, 0)).getResult().Value;
             def hir = Atla.Lang.Ast.Trans().trans(asm.scope, ast, name);
             Atla.Lang.Hir.Typing().typing(hir);
+            
+            when (foundTab)
+                hir.errors.Add(Hir.Error.IllegalIndentation("You must use spaces instead of tabs."));
             
             asm.modules[name] = hir;
             
@@ -26,11 +33,13 @@ namespace Atla.Lang
         }
         
         public static compile(asm: Hir.Assembly): Mir.Assembly {
-            Atla.Lang.Hir.Trans().trans(asm).getResult().Value
+            def res = Atla.Lang.Hir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
+            res.getResult().Value
         }
         
         public static compile(asm: Mir.Assembly): Cir.Assembly {
-            Atla.Lang.Mir.Trans().trans(asm).getResult().Value
+            def res = Atla.Lang.Mir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
+            res.getResult().Value
         }
     }
     

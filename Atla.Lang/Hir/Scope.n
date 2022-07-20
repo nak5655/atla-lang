@@ -28,16 +28,16 @@ namespace Atla.Lang.Hir
                 def tint = Type.Native(typeof(int));
                 def tbool = Type.Native(typeof(bool));
                 varTable.Add(Symbol("+", Type.Fn([tint, tint], tint), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
-                    Mir.Ins.Add(dst, arg0, arg1),
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Add, arg1),
                 ]))));
                 varTable.Add(Symbol("-", Type.Fn([tint, tint], tint), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
-                    Mir.Ins.Sub(dst, arg0, arg1),
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Sub, arg1),
                 ]))));
                 varTable.Add(Symbol("||", Type.Fn([tbool, tbool], tbool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
-                    Mir.Ins.Or(dst, arg0, arg1),
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Or, arg1),
                 ]))));
                 varTable.Add(Symbol("==", Type.Fn([tint, tint], tbool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
-                    Mir.Ins.Eq(dst, arg0, arg1),
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Eq, arg1),
                 ]))));
             }
         }
@@ -76,21 +76,21 @@ namespace Atla.Lang.Hir
             public name: option[string];
             public retType: Type;
             
-            public mutable endLabel: Mir.Ins.Label;
+            public mutable endLabel: Mir.Label;
             public mutable retSymbol: Symbol;
             
             public this(parent: Scope) {
                 this.parent = parent;
                 this.name = None();
                 retType = Type.Var();
-                endLabel = Mir.Ins.Label();
+                endLabel = Mir.Label();
             }
             
             public this(parent: Scope, name: option[string]) {
                 this.parent = parent;
                 this.name = name;
                 retType = Type.Var();
-                endLabel = Mir.Ins.Label();
+                endLabel = Mir.Label();
             } 
         }
         

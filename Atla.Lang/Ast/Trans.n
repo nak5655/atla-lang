@@ -12,6 +12,7 @@ using System.Linq;
 using Atla;
 using Atla.Lang;
 
+// TODO Hir.from に変更(ASTがHIRの詳細に依存すべきではない)
 namespace Atla.Lang.Ast
 {
     // 脱糖

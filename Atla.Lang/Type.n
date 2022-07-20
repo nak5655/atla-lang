@@ -134,11 +134,6 @@ namespace Atla.Lang
                 def argsStr = args.joinToString(", ");
                 $"Fn($argsStr): $ret"
             }
-            
-            public static from(methodInfo: System.Reflection.MethodInfo): Fn {
-                def pTypes = methodInfo.GetParameters().Map(p => p.ParameterType);
-                Fn(pTypes.Map(t => Type.Native(t)).ToNList(), Type.Native(methodInfo.ReturnType));
-            }
         }
         | Generics { _base: Type; _params: list[Type] }
         | Error {
