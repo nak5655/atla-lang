@@ -81,9 +81,27 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public trans(mc: Mir.MethodContainer, frame: Mir.Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins]] {
+        public trans(mc: Mir.MethodContainer, frame: Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins]] {
             match (hir) {
                 | Hir.Stmt.Expr(e) => trans(mc, frame, scope, e).map(a => a.proc)
+                | Hir.Stmt.Let(name, expr) => {
+                    match (scope.resolveVar(name, expr.type.pruned())) {
+                        | Some(sym) => {
+                            if (sym.isLocal()) {
+                                frame.declareLocal(sym);
+                            
+                                def re = trans(mc, frame, scope, expr);
+                                re.bind(e => match (e.res) {
+                                     | Some(res) => Result.Success(e.proc.Concat([Mir.Ins.Assign(sym, res)]))
+                                     | _ => Result.Failure($"$expr has no value.")
+                                })
+                            } else {
+                                Result.Failure($"$name is not declared as local variable.")
+                            }
+                        }
+                        | _ => Result.Failure($"$name does not exist in scope.")
+                    }
+                }
                 | Hir.Stmt.Return(e) => {
                     mutable retScope = scope;
                     while (true) {
@@ -110,7 +128,7 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public trans(mc: Mir.MethodContainer, frame: Mir.Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormalExpr] {
+        public trans(mc: Mir.MethodContainer, frame: Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormalExpr] {
             match (hir) {
                 // TODO
                 | Hir.Expr.Unit => Result.Success(KNormalExpr([], None())) // TODO Unit Singleton
@@ -151,7 +169,7 @@ namespace Atla.Lang.Hir
                             mutable resArgs = kArgs.Map(_.res).Filter(_.IsSome).Map(_.Value);
                             
                             // 引数がvoidのみの時
-                            when (args.Length == 1 && args.First().type.ToSystemType() == typeof(void)) {
+                            when (args.Length == 1 && args.First().type.isVoid()) {
                                 procArgs = [];
                                 resArgs = [];
                             }
@@ -190,7 +208,8 @@ namespace Atla.Lang.Hir
                     // TODO 返り値がvoidの時
                     
                     // ブロックの帰り値を確保
-                    blockScope.retSymbol = Symbol($"_block_`$(frame.locs.Count())", blockScope.retType, SymbolKind.Local());
+                    when (!blockScope.retType.isVoid())
+                        blockScope.retSymbol = frame.declareTemp(blockScope.retType);
                     
                     def stmts = ss.ToNList();
                     def body = if (stmts.Length > 0) {
@@ -207,16 +226,16 @@ namespace Atla.Lang.Hir
                                     def rc = trans(mc, frame, blockScope, e);
                                     res.bind(xs => rc.map(c => {
                                         match (c.res) {
-                                            | None => xs.Concat(c.proc)
-                                            | Some(v) => xs.Concat(c.proc).Concat([Mir.Ins.Assign(blockScope.retSymbol, v)])
+                                            | Some(v) when !blockScope.retType.isVoid() => xs.Concat(c.proc).Concat([Mir.Ins.Assign(blockScope.retSymbol, v)])
+                                            | _ => xs.Concat(c.proc)
                                         }
                                     }))
                                 } else {
                                     // 式の評価結果をblockの帰り値に代入
                                     trans(mc, frame, blockScope, e).map(xs => {
                                         match (xs.res) {
-                                            | None => xs.proc
-                                            | Some(v) => xs.proc.Concat([Mir.Ins.Assign(blockScope.retSymbol, v)])
+                                            | Some(v) when !blockScope.retType.isVoid() => xs.proc.Concat([Mir.Ins.Assign(blockScope.retSymbol, v)])
+                                            | _ => xs.proc
                                         }
                                     })
                                 }
@@ -229,7 +248,7 @@ namespace Atla.Lang.Hir
                         Result.Success([]) // TODO unitを返す
                     }
                     
-                    if (blockScope.retSymbol.type == typeof(void)) {
+                    if (blockScope.retType.isVoid()) {
                         body.bind(b => Result.Success(KNormalExpr(b, None())))
                     } else {
                         body.bind(b => Result.Success(KNormalExpr(b, Some(Mir.Value.Sym(blockScope.retSymbol)))))
@@ -317,7 +336,10 @@ namespace Atla.Lang.Hir
             }
             
             match (trans(mc, method.frame, hir.scope, hir.body)) {
-                | Result.Success(proc) => method.body = proc.proc.ToList().ToNList(); // 実行だけでいいはず proc.resは使わない
+                | Result.Success(proc) => method.body = match (proc.res) {
+                    | Some(r) => proc.proc.Concat([Mir.Ins.RetValue(r)]).ToList().ToNList();
+                    | _ => proc.proc.Concat([Mir.Ins.Ret()]).ToList().ToNList()
+                }
                 | Result.Failure(e) => return Result.Failure(e);
             }
             

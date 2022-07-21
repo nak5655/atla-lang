@@ -54,6 +54,7 @@ namespace Atla.Lang.Cir
     [Record]
     public class Method {
         public builder: MethodBuilder; // subtype of MethodInfo
+        public frame: Frame;
         public body: list[Ins];
     }
     

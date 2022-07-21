@@ -62,7 +62,7 @@
     <Compile Include="Either.n">
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Mir\Frame.n">
+    <Compile Include="Frame.n">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Mir\Mir.n">

@@ -16,7 +16,7 @@ namespace Atla.Lang.Mir
     {
         labelTable: Hashtable[Mir.Label, Cir.Label] = Hashtable(); // TODO これフレーム毎でよさそう
         
-        public load(frame: Mir.Frame, mir: Mir.Value): Result[IEnumerable[Cir.Ins]] {
+        public load(frame: Frame, mir: Mir.Value): Result[IEnumerable[Cir.Ins]] {
             match (mir) {
                 | Mir.Value.Imm(imm) => match (imm) {
                     | Mir.Imm.Bool(v) => Result.Success([Cir.Ins.LdInt32(v.toInt())])
@@ -28,6 +28,14 @@ namespace Atla.Lang.Mir
                     | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArg(i)])
                     | _ => Result.Failure($"Symbol $sym is invalid.") 
                 }
+            }
+        }
+        
+        public store(frame: Frame, sym: Symbol): Result[IEnumerable[Cir.Ins]] {
+            match (frame.resolve(sym)) {
+                    | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.StLoc(i)])
+                    | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.StArg(i)])
+                    | _ => Result.Failure($"Symbol $sym is invalid.") 
             }
         }
         
@@ -43,23 +51,19 @@ namespace Atla.Lang.Mir
             }
         }
         
-        public trans(frame: Mir.Frame, mir: Mir.Ins): Result[IEnumerable[Cir.Ins]] {
+        public trans(frame: Frame, mir: Mir.Ins): Result[IEnumerable[Cir.Ins]] {
             match (mir) {
                 | Mir.Ins.TAC(dst, lhs, op, rhs) => load(frame, lhs).bind(a => load(frame, rhs).bind(b => match (frame.resolve(dst)) {
                     | Some(FramePosition.Loc(i)) => Result.Success(a.Concat(b).Concat([trans(op), Cir.Ins.StLoc(i)]))
                     | Some(FramePosition.Arg(i)) => Result.Success(a.Concat(b).Concat([trans(op), Cir.Ins.StArg(i)]))
                     | _ => Result.Failure($"Symbol $dst is invalid.")
                 }))
-                | Mir.Ins.Assign(sym, rhs) => match (frame.resolve(sym)) {
-                    | Some(FramePosition.Loc(i)) => load(frame, rhs).map(vs => vs.Concat([Cir.Ins.StLoc(i)]))
-                    | Some(FramePosition.Arg(i)) => load(frame, rhs).map(vs => vs.Concat([Cir.Ins.StArg(i)]))
-                    | _ => Result.Failure($"Symbol $sym is invalid.")
-                }
+                | Mir.Ins.Assign(sym, rhs) => load(frame, rhs).bind(vs => store(frame, sym).map(st => vs.Concat(st)))
                 | Mir.Ins.Call(mi, args) => {
                     args.Map(a => load(frame, a)).seq().map(vs => vs.flatten().Concat([Cir.Ins.Call(mi)]))
                 }
                 | Mir.Ins.CallAssign(dst, mi, args) => {
-                    args.Map(a => load(frame, a)).seq().map(vs => vs.flatten().Concat([Cir.Ins.Call(mi)]))
+                    args.Map(a => load(frame, a)).seq().bind(vs => store(frame, dst).map(st => vs.flatten().Concat([Cir.Ins.Call(mi)].Concat(st))))
                 }
                 | Mir.Ins.MarkLabel(label) => {
                     when (!labelTable.ContainsKey(label))
@@ -79,6 +83,8 @@ namespace Atla.Lang.Mir
                     def cirLabel = labelTable.Get(label).Value;
                     load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrTrueS(cirLabel)]))
                 }
+                | Mir.Ins.RetValue(v) => load(frame, v).map(ld => ld.Concat([Cir.Ins.Ret()]))
+                | Mir.Ins.Ret => Result.Success([Cir.Ins.Ret()])
             }
         }
         
@@ -86,9 +92,9 @@ namespace Atla.Lang.Mir
             def body = mir.body.Map(i => trans(mir.frame, i)).seq().map(r => r.flatten());
             body.map(b => {
                 if (b.Count() > 0 && !(b.Last() is Cir.Ins.Ret)) {
-                    Cir.Method(mir.builder, b.ToList().ToNList() + [Cir.Ins.Ret()]) // voidを返す関数でも最後にretが必要
+                    Cir.Method(mir.builder, mir.frame, b.ToList().ToNList() + [Cir.Ins.Ret()]) // voidを返す関数でも最後にretが必要
                 } else {
-                    Cir.Method(mir.builder, b.ToList().ToNList())
+                    Cir.Method(mir.builder, mir.frame, b.ToList().ToNList())
                 }
             })
         }

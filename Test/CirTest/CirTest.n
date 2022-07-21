@@ -15,8 +15,8 @@ namespace Test.CirTest
     class CirTest
     {
         [Test]
-        public CirEasyTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest.exe"));
+        public CirHelloTest(): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Hello.exe"));
             
             def code = Misc.readCase("hello.atla");
             _ = Atla.Lang.Misc.updateModule(asm, "main", code);
@@ -30,15 +30,13 @@ namespace Test.CirTest
         
         [Test]
         public CirFibonacciTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest.exe"));
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Fibonacci.exe"));
             
             def code = Misc.readCase("fibonacci.atla");
             _ = Atla.Lang.Misc.updateModule(asm, "main", code);
             
             def mir = Atla.Lang.Misc.compile(asm);
             def cir = Atla.Lang.Misc.compile(mir);
-            
-            Assert.AreEqual(1, cir.modules.First().methods.Count());
             
             Atla.Lang.Cir.Emit().emit(cir);
         }

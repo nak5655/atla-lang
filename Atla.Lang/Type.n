@@ -86,6 +86,7 @@ namespace Atla.Lang
                 "Unknown"
             }
         }
+        | OneOf { mutable types: list[Type] }
         | Var {
             public mutable instance: Type;
             
@@ -159,7 +160,7 @@ namespace Atla.Lang
             def op = other.pruned(); // ここでotherを解決する(最初だけ)
             _canUnify(op) // 再帰で処理
         }
-        // 再帰用
+        // 再帰用(otherをprunedしない)
         _canUnify(other: Type): bool {
             match ((this, other)) {
                 | (Unknown, _) => true
@@ -167,7 +168,10 @@ namespace Atla.Lang
                 | (e is Error, _) => false
                 | (_, e is Error) => false
                 | (Var(t), _) => t._canUnify(other)
-                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x._canUnify(y)) && b._canUnify(d)
+                | (OneOf(ts), _) => ts.Any(_._canUnify(other))
+                | (_, OneOf(ts)) => ts.Any(_.canUnify(this)) // thisはprunedしてないので再帰の仕方が少し違うので注意
+                | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x.canUnify(y)) && b.canUnify(d) // 各パラメーターはprunedされてないので注意
+                | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => a.canUnify(c) && bs.Zip(ds).All((b,d) => b.canUnify(d)) // 各パラメーターはprunedされてないので注意
                 | (Native(a), Native(b)) when a.Equals(b) => true // TODO ネイティブの継承を考慮する
                 // TODO
                 | _ => false
@@ -197,7 +201,16 @@ namespace Atla.Lang
                     it.instance = it.instance.unify(this); // thisが型変数じゃないのでotherをunifyして返す
                     it.simplify()
                 }
+                | (OneOf(ts) as it, _) => {
+                    it.types = ts.Filter(_.canUnify(other));
+                    it
+                }
+                | (_, OneOf(ts) as it) => {
+                    it.types = ts.Filter(_.canUnify(other));
+                    it
+                }
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.unify(y)), b.unify(d))
+                | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => Generics(a.unify(c), bs.Zip(ds).Map((b,d) => b.unify(d)))
                 | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
                 // TODO
                 | _ => {
@@ -210,6 +223,7 @@ namespace Atla.Lang
         public pruned(): Type {
             match (this) {
                 | Var(t) => t.pruned()
+                | OneOf(ts) => if (ts.Length == 1) ts.First() else if (ts.Length == 0) Type.Error(TypeError.InferenceFailure("No one match for this type.")) else Type.Error(TypeError.Ambiguous(ts))
                 | Fn(args, ret) => Fn(args.Map(_.pruned()), ret.pruned())
                 | Generics(b, ps) => Generics(b.pruned(), ps.Map(_.pruned()))
                 | _ => this
@@ -299,6 +313,10 @@ namespace Atla.Lang
                 | (Error, _) => (this: object).Equals(other)
                 | _ => false
             }
+        }
+        
+        public isVoid(): bool {
+            this.ToSystemType() == typeof(void)
         }
     }
 }

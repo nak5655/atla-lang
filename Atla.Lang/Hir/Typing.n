@@ -104,7 +104,7 @@ namespace Atla.Lang.Hir
                             } else if (es.IsEmpty()) {
                                 hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
                             } else {
-                                hir.type.errors.Add(TypeError.Ambiguous(es))
+                               _ = hir.type.unify(Type.OneOf(es))
                             }
                         }
                         | Type.Native(nt) => {
@@ -122,7 +122,7 @@ namespace Atla.Lang.Hir
                             if (overloads.Length == 1) {
                                 _ = hir.type.unify(overloads.First().toFnType(scope))
                             } else if (overloads.Length > 1) {
-                                hir.type.errors.Add(TypeError.Ambiguous(overloads.Map(m => m.toFnType(scope))))
+                                _ = hir.type.unify(Type.OneOf(overloads.Map(m => m.toFnType(scope))))
                             } else {
                                 hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
                             }

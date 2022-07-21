@@ -22,11 +22,26 @@ namespace Atla.Lang.Mir
         | Bool { value: bool }
         | Int { value: int }
         | String { value: string }
+        
+        public override ToString(): string {
+            match (this) {
+                | Bool(v) => $"Bool($v)"
+                | Int(v) => $"Int($v)"
+                | String(v) => $"String($v)"
+            }
+        }
     }
     
     public variant Value {
         | Imm { value: Mir.Imm }
         | Sym { value: Symbol }
+        
+        public override ToString(): string {
+            match (this) {
+                | Imm(v) => $"Imm($v)"
+                | Sym(v) => $"Sym($v)"
+            }
+        }
     }
     
     public enum OpCode {
@@ -50,20 +65,42 @@ namespace Atla.Lang.Mir
         | Assign {
             name: Symbol;
             value: Value;
+            
+            public override ToString(): string {
+                $"$name = $value"
+            }
         }
-        | TAC { dest: Symbol; lhs: Value; op: OpCode; rhs: Value } // three addess code
+        | TAC {
+            dest: Symbol; lhs: Value; op: OpCode; rhs: Value;
+        
+            public override ToString(): string {
+                $"$dest = $lhs $op $rhs"
+            }
+        } // three addess code
         | Call {
             method: MethodInfo;
             args: list[Value];
+            
+            public override ToString(): string {
+                $"$method($(args.joinToString(\", \")))"
+            }
         }
         | CallAssign {
             dst: Symbol;
             method: MethodInfo;
             args: list[Value];
+            
+            public override ToString(): string {
+                $"$dst = $method($(args.joinToString(\", \")))"
+            }
         }
         | Ret
         | RetValue {
             value: Value;
+            
+            public override ToString(): string {
+                $"return $value"
+            }
         }
         | Jump {
             label: Label;

@@ -34,5 +34,16 @@ namespace Atla.Lang
                 | _ => false
             }
         }
+        
+        public isLocal(): bool {
+            match (kind) {
+                | SymbolKind.Local => true
+                | _ => false
+            }
+        }
+        
+        public override ToString(): string {
+            $"$name"
+        }
     }
 }
