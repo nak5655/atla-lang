@@ -53,6 +53,19 @@ namespace Atla.Lang.Ast
         public typeHint: TypeHint;
     }
     
+    [Record]
+    public variant Fn: HasSpan[Fn] {
+        | Valid { name: string; args: list[FnArg]; ret: TypeHint; body: Ast.Expr }
+        | Error { reason: string }
+        
+        public scanErrors(): IEnumerable[(string * Span)] {
+            match (this) {
+                | Error(s) => [(s, this.span)]
+                | Valid(_, _, _, e) => e.scanErrors()
+            }
+        }
+    }
+    
     public variant Expr: HasSpan[Expr] {
         | Unit
         | Int { value: int }
@@ -85,18 +98,22 @@ namespace Atla.Lang.Ast
     
     public variant Stmt: HasSpan[Stmt] {
         | Let { name: string; rhs: Ast.Expr }
+        | Var { name: string; rhs: Ast.Expr }
         | Assign { name: string; rhs: Ast.Expr }
         | Expr { expr: Ast.Expr }
         | Ret { expr: Ast.Expr }
+        | Fn { fn: Ast.Fn }
         | Error { reason: string }
         
         public scanErrors(): IEnumerable[(string * Span)] {
             match (this) {
                 | Error(s) => [(s, this.span)]
                 | Let(_, e) => e.scanErrors()
+                | Var(_, e) => e.scanErrors()
                 | Assign(_, e) => e.scanErrors()
                 | Expr(e) => e.scanErrors()
                 | Ret(e) => e.scanErrors()
+                | Fn(f) => f.scanErrors()
             }
         }
     }
@@ -109,14 +126,14 @@ namespace Atla.Lang.Ast
     
     public variant Decl: HasSpan[Decl] {
         | Class { name: string; items: list[ClassItem] }
-        | Fn { name: string; args: list[FnArg]; ret: TypeHint; body: Ast.Expr }
+        | Fn { fn: Ast.Fn }
         | Import { path: list[string] }
         | Error { reason: string }
         
         public scanErrors(): IEnumerable[(string * Span)] {
             match (this) {
                 | Error(s) => [(s, this.span)]
-                | Fn(_, _, _, e) => e.scanErrors()
+                | Fn(f) => f.scanErrors()
                 | Class(_, cis) => [] // TODO
                 | _ => []
             }

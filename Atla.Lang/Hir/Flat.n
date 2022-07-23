@@ -1,0 +1,74 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang.Hir
+{
+    // 関数の入れ子を外に出す(Expr.Fn -> Method)
+    public class Flat
+    {
+        mutable _seqId: int = -1;
+        getSeqId(type: Atla.Lang.Type): Hir.Expr.Id {
+            _seqId += 1;
+            def id = Hir.Expr.Id($"lambda`$_seqId");
+            _ = id.type.unify(type);
+            id
+        }
+        
+        replaceFn(hir: Hir.HasExpr): IEnumerable[Hir.Method] {
+            mutable ret: IEnumerable[Hir.Method] = [];
+            hir.replaceExpr(e => {
+                def (re, ms) = replaceExprFn(e); // ここでFn式だけ置き換えられる
+                ret = ret.Concat(ms);
+                re
+            });
+            
+            ret
+        }
+        
+        // ここちょっと複雑
+        // 式は変換したあと、変換した式も返さないといけない (↑の関数で式を置き換えるので)
+        replaceExprFn(hir: Hir.Expr): Hir.Expr * IEnumerable[Hir.Method] {
+            mutable ret: IEnumerable[Hir.Method] = [];
+            def re = hir.replaceAll(e => match (e) {
+                | Hir.Expr.Fn as f => {
+                    // 関数に一意な名前を付けてId式に変更。新しくメソッドを作って返す
+                    def fId = getSeqId(f.type);
+                    def (re, ms) = replaceExprFn(f.body);
+                    f.body = re;
+                    ret = ret.Concat(ms).Concat([Hir.Method(fId.name, f)]);
+                    fId
+                }
+                | _ => {
+                    def (_, ms) = replaceExprFn(e); // ここでは式そのものが変更されることはないはず
+                    ret = ret.Concat(ms);
+                    e
+                }
+            });
+            (re, ret)
+        }
+        
+        public flat(hir: Hir.Method): IEnumerable[Hir.Method] {
+            replaceFn(hir.fn.body)
+        }
+        
+        public flat(hir: Hir.Module): void {
+            mutable newMethods: IEnumerable[Hir.Method] = [];
+            foreach (method in hir.methods) {
+                newMethods = newMethods.Concat(flat(method));
+            }
+            hir.methods = newMethods.ToList();
+        }
+        
+        public flat(hir: Hir.Assembly): void {
+            foreach (mod in hir.modules.Values) {
+                flat(mod);
+            }
+        }
+    }
+}

@@ -99,6 +99,7 @@ namespace Atla.Lang.Parser
     {
         public typeHint: ParserRef[Token, TypeHint] = ParserRef();
         public pattern: ParserRef[Token, Pattern] = ParserRef();
+        public fn: ParserRef[Token, Ast.Fn] = ParserRef();
         public expr: ParserRef[Token, Expr] = ParserRef();
         public stmt: ParserRef[Token, Stmt] = ParserRef();
         public decl: ParserRef[Token, Decl] = ParserRef();
@@ -113,7 +114,7 @@ namespace Atla.Lang.Parser
             // TypeHint
             {
                 def typeHintFactor: Parser[Token, TypeHint] = tid.map(a => TypeHint.Name(a.value).exSpan(a));
-                def typeHintParen: Parser[Token, TypeHint] = delim("(")._and(typeHintFactor.optional().map(mt => {
+                def typeHintParen: Parser[Token, TypeHint] = delim("(")._and(typeHint.optional().map(mt => {
                     match (mt) {
                         | Some(t) => t
                         | _ => TypeHint.Unit()
@@ -121,12 +122,21 @@ namespace Atla.Lang.Parser
                 }))._and(delim(")")).map((ab, c) => ab[1].exSpan([ab[0], c]));
                 def typeHintTerm = typeHintParen._or(typeHintFactor);
                 
-                typeHint.impl = typeHintTerm.many1().map(ts => {
+                def typeHintGenerics: Parser[Token, TypeHint] = typeHintTerm.many1().map(ts => {
                     if (ts.Length == 1)
                         ts.Head
                     else
                         TypeHint.Generics(ts.Head, ts.Tail)
                 });
+                
+                def typeHintFn: Parser[Token, TypeHint] = typeHintGenerics.sepBy1(delim("->")).map(ts => {
+                    if (ts.Length > 1)
+                        TypeHint.Fn(ts.Take(ts.Length - 1).NToList(), ts.Last())
+                    else
+                        ts.Head
+                });
+                
+                typeHint.impl = typeHintFn;
             }
             
             // Pattern
@@ -134,6 +144,25 @@ namespace Atla.Lang.Parser
                 def int = satisfy("int", _ is Token.Int).map(t => Pattern.Int((t :> Token.Int).value).exSpan([t]));
                 def any = satisfy("any", t => t is Token.Id && (t :> Token.Id).value == "_").map(t => Pattern.Any().exSpan([t])); // delim("_")では無いので注意
                 pattern.impl = int._or(any);
+            }
+            
+            // Fn
+            {
+                def fnArg: Parser[Token, FnArg] = log("fn_arg", delim("(")._and(tid._andL(delim(":"))._and(typeHint).optional())._and(delim(")")).map((a_mit, b) => {
+                    def (a, mit) = a_mit;
+                    match (mit) {
+                        | Some((i, t)) => FnArg(i.value, t).exSpan([a.span, b.span])
+                        | _ => FnArg("", TypeHint.Unit())
+                    }
+                }));
+                def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
+                fn.impl = log("fn", delim("fn")._and(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(expr).map((n_rs_r, c) => {
+                        def n = n_rs_r[0][0];
+                        def rs = n_rs_r[0][1];
+                        def r = n_rs_r[1];
+                        Ast.Fn.Valid(n.value, rs, r, c).exSpan([n.span, c.span])
+                    })._andL(eoi()).onceFn()
+                ).map((a, b) => b.exSpan(a)));
             }
             
             // Expr
@@ -200,7 +229,7 @@ namespace Atla.Lang.Parser
                         }
                     })
                 });
-            
+                
                 expr.impl = binop.inlineBlock();
             }
             
@@ -209,28 +238,31 @@ namespace Atla.Lang.Parser
                 def letStmt = log("stmt_let", delim("let")._and(tid._andL(delim("="))._and(expr).map((id, e) => {
                     Stmt.Let(id.value, e).exSpan([id.span, e.span])
                 }).onceStmt()).map((a, b) => b.exSpan(a)));
+                
+                def varStmt = log("stmt_var", delim("var")._and(tid._andL(delim("="))._and(expr).map((id, e) => {
+                    Stmt.Var(id.value, e).exSpan([id.span, e.span])
+                }).onceStmt()).map((a, b) => b.exSpan(a)));
+                
+                def assignStmt = log("stmt_assign", tid._andL(delim("="))._and(expr).map((id, e) => {
+                    Stmt.Assign(id.value, e).exSpan([id.span, e.span])
+                }));
+                
                 def exprStmt = log("stmt_expr", expr.map(e => Stmt.Expr(e).exSpan(e)));
+                
                 def retStmt = log("stmt_return", delim("return")._and(expr.optional()).map((a, b) => {
                     def ret = Stmt.Ret(b.WithDefault(Expr.Unit())).exSpan(a);
                     if (b.IsSome) ret.exSpan(b.Value) else ret
                 }));
-                stmt.impl = letStmt._or(retStmt)._or(exprStmt).onceStmt().consumeBlock();
+                
+                def fnStmt: Parser[Token, Stmt] = fn.map(f => Stmt.Fn(f).exSpan(f));
+                
+                stmt.impl = letStmt._or(varStmt)._or(retStmt)._or(fnStmt)._or(assignStmt)._or(exprStmt).onceStmt().consumeBlock();
             }
             
             // Decls
             {
                 // Fn
-                def fnArg: Parser[Token, FnArg] = log("decl_fn_arg", delim("(")._andR(tid)._andL(delim(":"))._and(typeHint)._andL(delim(")")).map((a, b) => {
-                    FnArg(a.value, b).exSpan([a.span, b.span])
-                }));
-                def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
-                def fnDecl: Parser[Token, Decl] = log("decl_fn", delim("fn")._and(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(expr).map((n_rs_r, c) => {
-                        def n = n_rs_r[0][0];
-                        def rs = n_rs_r[0][1];
-                        def r = n_rs_r[1];
-                        Decl.Fn(n.value, rs, r, c).exSpan([n.span, c.span])
-                    })._andL(eoi()).onceDecl()
-                ).map((a, b) => b.exSpan(a)));
+                def fnDecl = fn.map(f => Decl.Fn(f).exSpan(f));
             
                 // Class
                 def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
@@ -243,7 +275,8 @@ namespace Atla.Lang.Parser
                 })).map((a, b) => b.exSpan(a));
                 def classMethod: Parser[Token, ClassItem] = fnDecl.map(d => {
                     def ci = match (d) {
-                        | Decl.Fn as f => ClassItem.Method(f.name, f.args, f.body)
+                        | Decl.Fn(Ast.Fn.Valid as f) => ClassItem.Method(f.name, f.args, f.body)
+                        | Decl.Fn(Ast.Fn.Error(reason)) => ClassItem.Error(reason)
                         | Decl.Error(reason) => ClassItem.Error(reason)
                     }
                     ci.exSpan(d)
@@ -321,6 +354,15 @@ namespace Atla.Lang.Parser
             })
         }
 
+        public onceFn(this p: Parser[Token, Fn]): Parser[Token, Fn] {
+            p.skipFail(ret => {
+                def failure = ret :> Result[Token, Fn].Failure; // always it is failure
+                def ret = Fn.Error(failure.reason);
+                ret.span = failure.failAt.position() :> Span;
+                ret
+            })
+        }
+        
         public exSpan[T](this ast: T, span: Span): T where T: HasSpan[T] {
             ast.addSpan(span)
         }

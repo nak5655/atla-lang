@@ -108,6 +108,8 @@ namespace Atla.Lang.Parse
                 mutable current = input;
                 def ret: List[A] = List();
                 while (true) {
+                    when (current.get().IsNone) // 入力がなくなったらすぐに終了する (パフォーマンスのため)
+                        break;
                     match (_andL(sep).parse(current)) {
                         | Parse.Result.Success(result, next) => {
                             ret.Add(result);
@@ -126,6 +128,16 @@ namespace Atla.Lang.Parse
                     break
                 }
                 Result.Success(ret.ToNList(), current)
+            })
+        }
+        
+        public sepBy1[B](sep: Parser[I, B]): Parser[I, list[A]] {
+            AnnoParser(input => {
+                match (sepBy(sep).parse(input)) {
+                    | Parse.Result.Success(result, next) when result.Length > 0 => Result.Success(result, next)
+                    | Parse.Result.Success => Result.Failure($"unexpected $(input.get())", input)
+                    | Parse.Result.Failure(msg, failAt) => Result.Failure(msg, failAt)
+                }
             })
         }
         

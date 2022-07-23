@@ -43,18 +43,6 @@ namespace Atla.Lang.Hir
                         | _ => Result.Failure($"$hir is not a function.")
                     }
                 }
-                | fn is Hir.Expr.Fn => {
-                    // ラムダ式に名前を付けて定義
-                    // TODO クロージャー
-                    def resMet = addMethod(mc, scope, fn);
-                    
-                    match (resMet) {
-                        | Result.Success(met) => {
-                            Result.Success(Callable.MethodInfo(met.builder))
-                        }
-                        | Result.Failure(e) => Result.Failure(e)
-                    }
-                }
                 | Hir.Expr.StaticMember(clsName, name) => {
                     mutable ty = scope.resolveType(clsName);
                     match (ty.pruned()) {
@@ -84,7 +72,7 @@ namespace Atla.Lang.Hir
         public trans(mc: Mir.MethodContainer, frame: Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins]] {
             match (hir) {
                 | Hir.Stmt.Expr(e) => trans(mc, frame, scope, e).map(a => a.proc)
-                | Hir.Stmt.Let(name, expr) => {
+                | Hir.Stmt.Let(name, expr, _) => {
                     match (scope.resolveVar(name, expr.type.pruned())) {
                         | Some(sym) => {
                             if (sym.isLocal()) {
@@ -307,35 +295,29 @@ namespace Atla.Lang.Hir
             //}
         }
         
-        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr.Fn): Result[Mir.Method] {
-            def name = $"_func_`$(scope.varTable.Count())";
-            scope.declareLocal(name, hir.type);
-            addMethod(mc, scope, name, hir);
-        }
-        
-        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, name: string, hir: Hir.Expr.Fn): Result[Mir.Method] {
-            def type = hir.type.pruned();
+        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Method): Result[Mir.Method] {
+            def type = hir.fn.type.pruned();
             match (type) {
                 | Type.Fn => ()
                 | _ => return Result.Failure($"$hir is $type, it should be a function.")
             }
             def fnType = type :> Type.Fn;
             
-            def method = mc.defineMethod(name, fnType.args.Map(_.ToSystemType()), fnType.ret.ToSystemType());
+            def method = mc.defineMethod(hir.name, fnType.args.Map(_.ToSystemType()), fnType.ret.ToSystemType());
             foreach (i in Enumerable.Range(0, fnType.args.Length)) {
-                match (hir.scope.resolveArgNth(i)) {
-                    | Some(sym) when sym.name == hir.args.Nth(i).name => method.frame.declareArg(sym) // 一応名前チェックする
-                    | _ => return Result.Failure($"Failed to create method frame. Could not find the argument $(hir.args.Nth(i).name) in function scope.")
+                match (hir.fn.scope.resolveArgNth(i)) {
+                    | Some(sym) when sym.name == hir.fn.args.Nth(i).name => method.frame.declareArg(sym) // 一応名前チェックする
+                    | _ => return Result.Failure($"Failed to create method frame. Could not find the argument $(hir.fn.args.Nth(i).name) in function scope.")
                 }
             }
             
             // Bodyを変換する前にSymbolにMethodInfoを設定する（再帰関数に対応できる）
-            match (scope.resolveVar(name, fnType)) {
+            match (scope.resolveVar(hir.name, fnType)) {
                 | Some(Symbol as sym) => sym.kind = SymbolKind.Method(method.builder)
-                | _ => return Result.Failure($"Could not resolve method $name as $fnType.")
+                | _ => return Result.Failure($"Could not resolve method $(hir.name) as $fnType.")
             }
             
-            match (trans(mc, method.frame, hir.scope, hir.body)) {
+            match (trans(mc, method.frame, hir.fn.scope, hir.fn)) {
                 | Result.Success(proc) => method.body = match (proc.res) {
                     | Some(r) => proc.proc.Concat([Mir.Ins.RetValue(r)]).ToList().ToNList();
                     | _ => proc.proc.Concat([Mir.Ins.Ret()]).ToList().ToNList()
@@ -351,12 +333,10 @@ namespace Atla.Lang.Hir
             
             // TODO type definitions
             
-            foreach ((name, overloads) in hir.members.KeyValuePairs) {
-                foreach (overload in overloads) {
-                    match (addMethod(mod, hir.scope, name, overload)) {
-                        | Result.Failure(e) => return Result.Failure(e);
-                        | _ => {}
-                    }
+            foreach (method in hir.methods) {
+                match (addMethod(mod, hir.scope, method)) {
+                    | Result.Failure(e) => return Result.Failure(e);
+                    | _ => {}
                 }
             }
           

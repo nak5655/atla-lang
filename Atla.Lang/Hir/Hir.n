@@ -19,6 +19,11 @@ using Atla.Lang.Parse;
 **/
 namespace Atla.Lang.Hir
 {
+    public interface HasExpr {
+        // 再帰的に出現する式を置換する 平滑化(Flat)で使う ほかにも使えるかも
+        replaceExpr(f: Hir.Expr -> Hir.Expr): void;
+    }
+    
     public variant Error {
         | IllegalIndentation { message: string }
         | DuplicatedDeclaration { name: string; type: Type; already: Type }
@@ -54,18 +59,27 @@ namespace Atla.Lang.Hir
         }
     }
     
-    public variant Stmt: HasSpan[Stmt] {
-        | Expr { expr: Hir.Expr }
-        | Let { name: string; expr: Hir.Expr }
-        | Assign { name: string; expr: Hir.Expr }
-        | Return { value: Hir.Expr }
+    public variant Stmt: HasSpan[Stmt], HasExpr {
+        | Expr { mutable expr: Hir.Expr }
+        | Let { name: string; mutable expr: Hir.Expr; isMut: bool; }
+        | Assign { name: string; mutable expr: Hir.Expr }
+        | Return { mutable expr: Hir.Expr }
+        
+        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
+            match (this) {
+                | Expr as e => e.expr = e.expr.replaceAll(f)
+                | Let as e => e.expr = e.expr.replaceAll(f)
+                | Assign as e => e.expr = e.expr.replaceAll(f)
+                | Return as e => e.expr = e.expr.replaceAll(f)
+            }
+        }
         
         public errors: List[Error] = List();
         
         public scanErrors(): IEnumerable[(Error * Span)] {
             def es = match (this) {
                 | Expr(e) => e.scanErrors()
-                | Let(_, e) => e.scanErrors()
+                | Let(_, e, _) => e.scanErrors()
                 | Assign(_, e) => e.scanErrors()
                 | Return(e) => e.scanErrors()
             }
@@ -73,10 +87,10 @@ namespace Atla.Lang.Hir
         }
     }
     
-    public class SwitchEntry: HasSpan[SwitchEntry] {
+    public class SwitchEntry: HasSpan[SwitchEntry], HasExpr {
         public bodyScope: Scope.Block;
-        public pred: Expr;
-        public body: Expr;
+        public mutable pred: Expr;
+        public mutable body: Expr;
         
         public this(bodyScope: Scope.Block, pred: Expr, body: Expr) {
             this.bodyScope = bodyScope;
@@ -84,20 +98,29 @@ namespace Atla.Lang.Hir
             this.body = body;
         }
         
+        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
+            this.pred = this.pred.replaceAll(f);
+            this.body = this.body.replaceAll(f);
+        }
+        
         public scanErrors(): IEnumerable[(Error * Span)] {
             pred.scanErrors().Concat(body.scanErrors())
         }
     }
     
-    public class MatchEntry: HasSpan[MatchEntry] {
+    public class MatchEntry: HasSpan[MatchEntry], HasExpr {
         public scope: Scope.Block;
         public pattern: Pattern;
-        public expr: Expr;
+        public mutable expr: Expr;
         
         public this(scope: Scope.Block, pattern: Pattern, expr: Expr) {
             this.scope = scope;
             this.pattern = pattern;
             this.expr = expr;
+        }
+        
+        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
+            this.expr = this.expr.replaceAll(f);
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {
@@ -117,7 +140,7 @@ namespace Atla.Lang.Hir
         }
     }
     
-    public variant Expr: HasSpan[Expr] {
+    public variant Expr: HasSpan[Expr], HasExpr {
         | Unit {
             public override ToString(): string {
                 "Unit"
@@ -162,7 +185,7 @@ namespace Atla.Lang.Hir
         }
         | Match {
             public scope: Scope.Block;
-            public expr: Expr;
+            public mutable expr: Expr;
             public entries: list[MatchEntry];
         }
         | Fn {
@@ -190,7 +213,7 @@ namespace Atla.Lang.Hir
             }
         }
         | Member {
-            public expr: Expr;
+            public mutable expr: Expr;
             public name: string;
             
             public override ToString(): string {
@@ -206,8 +229,8 @@ namespace Atla.Lang.Hir
             }
         }
         | Apply {
-            public fn: Expr;
-            public args: list[Expr];
+            public mutable fn: Expr;
+            public mutable args: list[Expr];
             
             public override ToString(): string {
                 def argsStr = args.joinToString(", ");
@@ -218,6 +241,27 @@ namespace Atla.Lang.Hir
         public mutable typeHint: TypeHint = TypeHint.None();
         public mutable type: Type.Var = Type.Var();
         public errors: List[Error] = List();
+        
+        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
+            _ = replaceAll(f);
+        }
+        
+        // 自分自身も置換する
+        public replaceAll(f: Hir.Expr -> Hir.Expr): Hir.Expr {
+            match (this) {
+                | Unit | Bool | Int | String | Id | StaticMember => {}
+                | Block as e => e.stmts.ForEach(_.replaceExpr(f))
+                | Switch as e => foreach (e in e.entries) { e.replaceExpr(f) }
+                | Match as e => foreach (e in e.entries) { e.replaceExpr(f) }
+                | Fn as e => e.body = e.body.replaceAll(f)
+                | Member as e => e.expr = e.expr.replaceAll(f)
+                | Apply as e => {
+                    e.fn = e.fn.replaceAll(f);
+                    e.args = e.args.Map(a => a.replaceAll(f));
+                }
+            };
+            f(this)
+        }
         
         // TODO Type.Varのエラーが重複する
         public scanErrors(): IEnumerable[(Error * Span)] {
@@ -258,17 +302,40 @@ namespace Atla.Lang.Hir
         // TODO: errors
     }
     
+    public enum AccessQualifier {
+        | Public
+        | Private
+    }
+    
+    public class Method {
+        public name: string;
+        public fn: Expr.Fn;
+        public accessQualifier: AccessQualifier;
+        public mutable hidden: bool; // 自動生成の関数など（MSILでHideBySigがつく）
+        
+        public this(name: string, fn: Expr.Fn) {
+            this.name = name;
+            this.fn = fn;
+            this.accessQualifier = AccessQualifier.Public;
+            this.hidden = false;
+        }
+        
+        public scanErrors(): IEnumerable[(Error * Span)] {
+            fn.scanErrors()
+        }
+    }
+    
     public class Module {
         public name: string; // TODO scope.nameを返す
         public imports: List[Import];
-        public mutable members: Hashtable[string, List[Expr.Fn]]; // overloads
+        public mutable methods: List[Method];
         
         public scope: Scope.Module;
         
         public this(parentScope: Scope.Global, name: string) {
             this.name = name;
             imports = List();
-            members = Hashtable();
+            methods = List();
             
             this.scope = Scope.Module(parentScope, name);
         }
@@ -279,17 +346,13 @@ namespace Atla.Lang.Hir
         }
         
         public declareFn(name: string, fn: Expr.Fn): void {
-            when (!members.ContainsKey(name))
-                members.Add(name, List());
-            
-            def overloads = members[name];
-            overloads.Add(fn)
+            methods.Add(Method(name, fn));
         }
         
         public errors: List[Error] = List();
         
         public scanErrors(): IEnumerable[(Error * Span)] {
-            errors.Map(e => (e, Span.zero())).Concat(members.Values.SelectMany(_.SelectMany(_.scanErrors())))
+            errors.Map(e => (e, Span.zero())).Concat(methods.SelectMany(_.scanErrors()))
         }
     }
     

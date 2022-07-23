@@ -28,16 +28,12 @@ namespace Atla.Lang.Hir
             }
             
             // first, declare members
-            foreach ((id, member) in hir.members.KeyValuePairs) {
-                foreach (overload in member) {
-                    hir.scope.declareLocal(id, overload.type)
-                }
+            foreach (method in hir.methods) {
+                hir.scope.declareLocal(method.name, method.fn.type)
             }
             // next, analyze the type hints.
-            foreach ((_, member) in hir.members.KeyValuePairs) {
-                foreach (overload in member) {
-                    typing(hir.scope, overload, Type.Unknown());
-                }
+            foreach (method in hir.methods) {
+                typing(hir.scope, method.fn, Type.Unknown());
             }
         }
         
@@ -165,7 +161,7 @@ namespace Atla.Lang.Hir
         // 型の関係式をトップダウンで構築
         public typing(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
-                | Hir.Stmt.Let(name, rhs) => {
+                | Hir.Stmt.Let(name, rhs, _) => {
                     typing(scope, rhs, Type.Unknown()); // TODO type hint
                     scope.declareLocal(name, rhs.type); // 右辺を処理してから変数宣言
                 }

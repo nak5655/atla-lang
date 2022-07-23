@@ -1,0 +1,17 @@
+﻿import System::Array
+import System::Console
+
+fn main (args: Array String): Unit = do
+    let f = countUp ()
+    f () # TODO for-loop
+    f ()
+    f ()
+    f ()
+    f ()
+
+fn countUp (): (Unit -> Unit) = do
+    var x = 0
+    fn _countUp (): Unit = do
+        x = x + 1
+        Console::WriteLine x
+	_countUp

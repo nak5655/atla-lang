@@ -33,6 +33,7 @@ namespace Atla.Lang
         }
         
         public static compile(asm: Hir.Assembly): Mir.Assembly {
+            Atla.Lang.Hir.Flat().flat(asm);
             def res = Atla.Lang.Hir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
             res.getResult().Value
         }

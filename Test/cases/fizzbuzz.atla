@@ -1,0 +1,7 @@
+﻿import System::Int32
+import System::Array
+import System::Console
+
+fn main (args: Array String): Unit = do
+    let n = Int32::Parse (Console::ReadLine ())
+    Console::WriteLine (fibonacci n)

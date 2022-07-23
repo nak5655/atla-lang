@@ -26,8 +26,12 @@ namespace Test.AstTest
             def lexer = Lexer();
             def tokens = lexer.tokenize(code).getResult().Value;
             def parser = Parser();
+            
             def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
+            Assert.AreEqual(0, ast.scanErrors().Count());
+            
             def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
+            Assert.AreEqual(0, hir.scanErrors().Count());
         }
         
         [Test]
@@ -37,8 +41,27 @@ namespace Test.AstTest
             def lexer = Lexer();
             def tokens = lexer.tokenize(code).getResult().Value;
             def parser = Parser();
+            
             def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
+            Assert.AreEqual(0, ast.scanErrors().Count());
+            
             def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
+            Assert.AreEqual(0, hir.scanErrors().Count());
+        }
+        
+        [Test]
+        public AstCountUpTest(): void {
+            def code = Misc.readCase("countUp.atla");
+            
+            def lexer = Lexer();
+            def tokens = lexer.tokenize(code).getResult().Value;
+            def parser = Parser();
+            
+            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
+            Assert.AreEqual(0, ast.scanErrors().Count());
+            
+            def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
+            Assert.AreEqual(0, hir.scanErrors().Count());
         }
     }
 }

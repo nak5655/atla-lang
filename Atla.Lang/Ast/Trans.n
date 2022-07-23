@@ -50,13 +50,21 @@ namespace Atla.Lang.Ast
                 | Ast.Stmt.Expr(expr) => Hir.Stmt.Expr(trans(scope, expr))
                 | Ast.Stmt.Let(name, expr) => {
                     def rhs = trans(scope, expr);
-                    Hir.Stmt.Let(name, rhs)
+                    Hir.Stmt.Let(name, rhs, false)
+                }
+                | Ast.Stmt.Var(name, expr) => {
+                    def rhs = trans(scope, expr);
+                    Hir.Stmt.Let(name, rhs, true)
                 }
                 | Ast.Stmt.Assign(name, expr) => {
                     def rhs = trans(scope, expr);
                     Hir.Stmt.Assign(name, rhs)
                 }
                 | Ast.Stmt.Ret(expr) => Hir.Stmt.Return(trans(scope, expr))
+                | Ast.Stmt.Fn(f) => {
+                    def (name, fn) = trans(scope, f);
+                    Hir.Stmt.Let(name, fn, false); // suger syntax
+                }
             };
             stmt.addSpan(ast.span)
         }
@@ -88,19 +96,29 @@ namespace Atla.Lang.Ast
             expr.addSpan(ast.span)
         }
         
-        public declare(mod: Hir.Module, ast: Ast.Decl): void {
+        public trans(scope: Hir.Scope, ast: Ast.Fn): string * Hir.Expr.Fn {
             match (ast) {
-                | Ast.Decl.Import(path) => mod.import(path)
-                | Ast.Decl.Fn(name, args, ret, body) => {
+                | Ast.Fn.Valid(name, args, ret, body) => {
                     def fnType = TypeHint.Fn(args.Map(_.typeHint), ret);
                     _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
                     
-                    def fn = Hir.Expr.Fn(mod.scope, args.Map(_.name));
+                    def fn = Hir.Expr.Fn(scope, args.Map(_.name));
                     _ = fn.addSpan(ast.span);
                     fn.typeHint = fnType;
                     
+                    fn.body = trans(fn.scope, body); // 関数のスコープを作ってから本体を定義
+                    
+                    (name, fn)
+                }
+            }
+        }
+        
+        public declare(mod: Hir.Module, ast: Ast.Decl): void {
+            match (ast) {
+                | Ast.Decl.Import(path) => mod.import(path)
+                | Ast.Decl.Fn(f) => {
+                    def (name, fn) = trans(mod.scope, f);
                     mod.declareFn(name, fn);
-                    fn.body = trans(fn.scope, body); // 関数宣言でスコープを作ってから本体を定義
                 }
                 | Ast.Decl.Error => {}
             }

@@ -45,9 +45,9 @@ namespace Test.HirTest
             def blockScope = Atla.Lang.Hir.Scope.Block(globalScope, None());
             def block = Expr.Block(blockScope);
             block.stmts.AddRange([
-                Stmt.Let("a", Expr.Int(1)),
-                Stmt.Let("b", Expr.Id("a")),
-                Stmt.Let("c", Expr.Id("b")),
+                Stmt.Let("a", Expr.Int(1), false),
+                Stmt.Let("b", Expr.Id("a"), false),
+                Stmt.Let("c", Expr.Id("b"), true),
                 Stmt.Assign("c", Expr.Id("b")),
                 Stmt.Return(Expr.Id("c"))
             ]);
