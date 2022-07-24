@@ -18,6 +18,22 @@ namespace Test.ParserTest
     [TestFixture]
     class ParserTest
     {
+        tryParse(code: string): void {
+            def lexer = Lexer();
+            match (lexer.tokenize(code)) {
+                | Result.Success(tokens, _) => {
+                    def parser = Parser();
+                    match (parser.mod.parse(TokenInput(tokens, 0))) {
+                        | Result.Success(result, _) => {
+                            Assert.AreEqual(0, result.scanErrors().Count())
+                        }
+                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
+                    }
+                }
+                | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
+            }
+        }
+        
         [Test]
         public EasyTokenizeTest(): void {
             def lexer = Lexer();
@@ -84,40 +100,18 @@ namespace Test.ParserTest
         
         [Test]
         public ParserHelloTest(): void {
-            def code = Misc.readCase("hello.atla");
-            
-            def lexer = Lexer();
-            match (lexer.tokenize(code)) {
-                | Result.Success(tokens, _) => {
-                    def parser = Parser();
-                    match (parser.mod.parse(TokenInput(tokens, 0))) {
-                        | Result.Success(result, _) => {
-                            Assert.AreEqual(0, result.scanErrors().Count())
-                        }
-                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-                    }
-                }
-                | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-            }
+            tryParse(Misc.readCase("hello.atla"));
         }
         
         [Test]
         public ParserFibonacciTest(): void {
-            def code = Misc.readCase("fibonacci.atla");
-            
-            def lexer = Lexer();
-            match (lexer.tokenize(code)) {
-                | Result.Success(tokens, _) => {
-                    def parser = Parser();
-                    match (parser.mod.parse(TokenInput(tokens, 0))) {
-                        | Result.Success(result, _) => {
-                            Assert.AreEqual(0, result.scanErrors().Count())
-                        }
-                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-                    }
-                }
-                | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-            }
+            tryParse(Misc.readCase("fibonacci.atla"));
+        }
+        
+        
+        [Test]
+        public ParserGeometryTest(): void {
+            tryParse(Misc.readCase("geometry.atla"));
         }
     }
 }

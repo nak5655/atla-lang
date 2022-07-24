@@ -20,8 +20,8 @@ using Atla.Lang.Parse;
 namespace Atla.Lang.Hir
 {
     public interface HasExpr {
-        // 再帰的に出現する式を置換する 平滑化(Flat)で使う ほかにも使えるかも
-        replaceExpr(f: Hir.Expr -> Hir.Expr): void;
+        // Bottom-Upで再帰的に出現する式を置換する 平滑化(Flat)で使う ほかにも使えるかも
+        replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void;
     }
     
     public variant Error {
@@ -61,16 +61,16 @@ namespace Atla.Lang.Hir
     
     public variant Stmt: HasSpan[Stmt], HasExpr {
         | Expr { mutable expr: Hir.Expr }
-        | Let { name: string; mutable expr: Hir.Expr; isMut: bool; }
-        | Assign { name: string; mutable expr: Hir.Expr }
+        | Var { id: Hir.Expr.Id; mutable expr: Hir.Expr; isMut: bool; }
+        | Assign { id: Hir.Expr.Id; mutable expr: Hir.Expr }
         | Return { mutable expr: Hir.Expr }
         
-        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
+        public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
             match (this) {
-                | Expr as e => e.expr = e.expr.replaceAll(f)
-                | Let as e => e.expr = e.expr.replaceAll(f)
-                | Assign as e => e.expr = e.expr.replaceAll(f)
-                | Return as e => e.expr = e.expr.replaceAll(f)
+                | Expr as e => e.expr = e.expr.replaceAll(scope, f)
+                | Var as e => e.expr = e.expr.replaceAll(scope, f)
+                | Assign as e => e.expr = e.expr.replaceAll(scope, f)
+                | Return as e => e.expr = e.expr.replaceAll(scope, f)
             }
         }
         
@@ -79,7 +79,7 @@ namespace Atla.Lang.Hir
         public scanErrors(): IEnumerable[(Error * Span)] {
             def es = match (this) {
                 | Expr(e) => e.scanErrors()
-                | Let(_, e, _) => e.scanErrors()
+                | Var(_, e, _) => e.scanErrors()
                 | Assign(_, e) => e.scanErrors()
                 | Return(e) => e.scanErrors()
             }
@@ -98,9 +98,9 @@ namespace Atla.Lang.Hir
             this.body = body;
         }
         
-        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
-            this.pred = this.pred.replaceAll(f);
-            this.body = this.body.replaceAll(f);
+        public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
+            this.pred = this.pred.replaceAll(scope, f);
+            this.body = this.pred.replaceAll(bodyScope, f);
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {
@@ -109,22 +109,22 @@ namespace Atla.Lang.Hir
     }
     
     public class MatchEntry: HasSpan[MatchEntry], HasExpr {
-        public scope: Scope.Block;
+        public bodyScope: Scope.Block;
         public pattern: Pattern;
-        public mutable expr: Expr;
+        public mutable body: Expr;
         
-        public this(scope: Scope.Block, pattern: Pattern, expr: Expr) {
-            this.scope = scope;
+        public this(bodyScope: Scope.Block, pattern: Pattern, body: Expr) {
+            this.bodyScope = bodyScope;
             this.pattern = pattern;
-            this.expr = expr;
+            this.body = body;
         }
         
-        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
-            this.expr = this.expr.replaceAll(f);
+        public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
+            this.body = this.body.replaceAll(bodyScope, f);
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {
-            pattern.scanErrors().Concat(expr.scanErrors())
+            pattern.scanErrors().Concat(body.scanErrors())
         }
     }
     
@@ -206,7 +206,29 @@ namespace Atla.Lang.Hir
         }
         | Id {
             public name: string;
-            // TODO option[Symbol]をもつ?
+            mutable symbolCache: option[Symbol];
+            
+            public this(name: string) {
+                this.name = name;
+                symbolCache = None();
+            }
+            
+            public this(symbol: Symbol) {
+                this.name = symbol.name;
+                symbolCache = Some(symbol);
+                type.unify(symbol.type);
+            }
+            
+            public getSymbol(scope: Hir.Scope): option[Symbol] {
+                when (symbolCache.IsNone) {
+                    symbolCache = scope.resolveVar(name, type.pruned());
+                    match (symbolCache) {
+                        | Some(s) => _ = s.type.unify(type) // Id式の型とSymbolの型は一致する
+                        | _ => {}
+                    }
+                }
+                symbolCache
+            }
             
             public override ToString(): string {
                 $"Id($name)"
@@ -242,25 +264,25 @@ namespace Atla.Lang.Hir
         public mutable type: Type.Var = Type.Var();
         public errors: List[Error] = List();
         
-        public replaceExpr(f: Hir.Expr -> Hir.Expr): void {
-            _ = replaceAll(f);
+        public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
+            _ = replaceAll(scope, f);
         }
         
         // 自分自身も置換する
-        public replaceAll(f: Hir.Expr -> Hir.Expr): Hir.Expr {
+        public replaceAll(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): Hir.Expr {
             match (this) {
                 | Unit | Bool | Int | String | Id | StaticMember => {}
-                | Block as e => e.stmts.ForEach(_.replaceExpr(f))
-                | Switch as e => foreach (e in e.entries) { e.replaceExpr(f) }
-                | Match as e => foreach (e in e.entries) { e.replaceExpr(f) }
-                | Fn as e => e.body = e.body.replaceAll(f)
-                | Member as e => e.expr = e.expr.replaceAll(f)
+                | Block as e => e.stmts.ForEach(_.replaceExpr(e.scope, f))
+                | Switch as e => foreach (e in e.entries) { e.replaceExpr(e.bodyScope, f) }
+                | Match as e => foreach (e in e.entries) { e.replaceExpr(e.bodyScope, f) }
+                | Fn as e => e.body = e.body.replaceAll(e.scope, f)
+                | Member as e => e.expr = e.expr.replaceAll(scope, f)
                 | Apply as e => {
-                    e.fn = e.fn.replaceAll(f);
-                    e.args = e.args.Map(a => a.replaceAll(f));
+                    e.fn = e.fn.replaceAll(scope, f);
+                    e.args = e.args.Map(a => a.replaceAll(scope, f));
                 }
             };
-            f(this)
+            f(scope, this)
         }
         
         // TODO Type.Varのエラーが重複する
@@ -307,6 +329,12 @@ namespace Atla.Lang.Hir
         | Private
     }
     
+    // TODO Method.Ctor ?
+    public class Ctor {
+        public args: list[FnArg];
+        public body: Expr;
+    }
+    
     public class Method {
         public name: string;
         public fn: Expr.Fn;
@@ -329,6 +357,7 @@ namespace Atla.Lang.Hir
         public name: string; // TODO scope.nameを返す
         public imports: List[Import];
         public mutable methods: List[Method];
+        public mutable classes: List[Type.Class];
         
         public scope: Scope.Module;
         
@@ -345,7 +374,7 @@ namespace Atla.Lang.Hir
             // TODO edit scope
         }
         
-        public declareFn(name: string, fn: Expr.Fn): void {
+        public addMethod(name: string, fn: Expr.Fn): void {
             methods.Add(Method(name, fn));
         }
         

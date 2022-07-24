@@ -13,56 +13,75 @@ namespace Atla.Lang.Hir
     public class Flat
     {
         mutable _seqId: int = -1;
-        getSeqId(type: Atla.Lang.Type): Hir.Expr.Id {
+        getUniqueName(): string {
             _seqId += 1;
-            def id = Hir.Expr.Id($"lambda`$_seqId");
-            _ = id.type.unify(type);
-            id
+            $"closure`$_seqId"
         }
         
-        replaceFn(hir: Hir.HasExpr): IEnumerable[Hir.Method] {
-            mutable ret: IEnumerable[Hir.Method] = [];
-            hir.replaceExpr(e => {
-                def (re, ms) = replaceExprFn(e); // ここでFn式だけ置き換えられる
-                ret = ret.Concat(ms);
-                re
+        replaceFn(scope: Hir.Scope, hir: Hir.HasExpr): IEnumerable[Type.Class] {
+            mutable ret: List[Type.Class] = List();
+            hir.replaceExpr(scope, (s, e) => match (e) {
+                | Hir.Expr.Fn as f => {
+                    // bodyはすでに置換済みなので注意（Bottom-Upなので）
+                    
+                    // クロージャーを表すクラスを作成
+                    def fClass = Type.Class(scope.globalScope(), getUniqueName());
+                    
+                     // コンストラクタ作成
+                    def fClassCtor = Hir.Expr.Fn(fClass.scope, []);
+                    fClass.methods.Add(Hir.Method("ctor", fClassCtor)); // TODO コンストラクタの表現方法(とりあえず名前をctorにする)
+                    ret.Add(fClass);
+                    
+                    // クラスのインスタンスのシンボル
+                    def fClassInst = scope.declareLocal(getUniqueName(), fClass);
+                    
+                    // クロージャー内の自由変数を置換しながら列挙
+                    def freeVars: List[string * Symbol] = List(); // 新たなフィールド名 * 元のシンボル
+                    f.body.replaceExpr(f.scope, (s, e) => match (e) {
+                        | Hir.Expr.Id as it => match (it.getSymbol(s)) {
+                            | Some(sym) => {
+                                // スコープの深さから自由変数を判定する
+                                if (sym.depth < f.scope.depth) {
+                                    // クロージャークラスのフィールドアクセスに置換
+                                    def fieldName = $"freeVar`$(freeVars.Count())";
+                                    freeVars.Add(fieldName, sym);
+                                    Hir.Expr.Member(Hir.Expr.Id(fClassInst), fieldName)
+                                } else {
+                                    e
+                                }
+                            }
+                            | _ => e
+                        }
+                        | _ => e
+                    });
+                    
+                    // 自由変数を除いた関数本体をクラス内に定義
+                    fClass.methods.Add(Hir.Method("closure`invoke", f));
+                    
+                    // 元の関数式をクロージャーに置き換え
+                    def block = Hir.Expr.Block(s);
+                    block.stmts.AddRange([
+                        // コンストラクタ呼び出し
+                        //Hir.Stmt.Let(Hir.Expr.Id(fClassInst), Hir.Expr.Apply(Hir.Expr.StaticMember()), false),
+                    ]);
+                    block
+                }
+                | _ => e
             });
             
             ret
         }
         
-        // ここちょっと複雑
-        // 式は変換したあと、変換した式も返さないといけない (↑の関数で式を置き換えるので)
-        replaceExprFn(hir: Hir.Expr): Hir.Expr * IEnumerable[Hir.Method] {
-            mutable ret: IEnumerable[Hir.Method] = [];
-            def re = hir.replaceAll(e => match (e) {
-                | Hir.Expr.Fn as f => {
-                    // 関数に一意な名前を付けてId式に変更。新しくメソッドを作って返す
-                    def fId = getSeqId(f.type);
-                    def (re, ms) = replaceExprFn(f.body);
-                    f.body = re;
-                    ret = ret.Concat(ms).Concat([Hir.Method(fId.name, f)]);
-                    fId
-                }
-                | _ => {
-                    def (_, ms) = replaceExprFn(e); // ここでは式そのものが変更されることはないはず
-                    ret = ret.Concat(ms);
-                    e
-                }
-            });
-            (re, ret)
-        }
-        
-        public flat(hir: Hir.Method): IEnumerable[Hir.Method] {
-            replaceFn(hir.fn.body)
+        public flat(hir: Hir.Method): IEnumerable[Type.Class] {
+            replaceFn(hir.fn.scope, hir.fn.body)
         }
         
         public flat(hir: Hir.Module): void {
-            mutable newMethods: IEnumerable[Hir.Method] = [];
+            mutable newClasses: IEnumerable[Type.Class] = [];
             foreach (method in hir.methods) {
-                newMethods = newMethods.Concat(flat(method));
+                newClasses = newClasses.Concat(flat(method));
             }
-            hir.methods = newMethods.ToList();
+            hir.classes.AddRange(newClasses);
         }
         
         public flat(hir: Hir.Assembly): void {

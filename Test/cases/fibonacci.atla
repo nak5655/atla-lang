@@ -11,5 +11,5 @@ fn fibonacci (n: Int): Int =
         | else => fibonacci (n - 2) + fibonacci (n - 1)
 
 fn main (args: Array String): Unit = do
-    let n = Int32::Parse (Console::ReadLine ())
+    val n = Int32::Parse (Console::ReadLine ())
     Console::WriteLine (fibonacci n)

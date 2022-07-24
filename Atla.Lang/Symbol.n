@@ -27,6 +27,7 @@ namespace Atla.Lang
         public mutable name: string;
         public mutable type: Type;
         public mutable kind: SymbolKind;
+        public mutable depth: int;
         
         public isArg(): bool {
             match (kind) {

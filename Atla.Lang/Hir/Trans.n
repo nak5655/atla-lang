@@ -32,13 +32,16 @@ namespace Atla.Lang.Hir
     {
         getCallable(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr): Result[Callable] {
             match (hir) { 
-                | Hir.Expr.Id(s) => {
+                | Hir.Expr.Id(s, _) as id => {
                     def ty = hir.type.pruned();
-                    def msym = scope.resolveVar(s, ty);
-                    match (msym) {
+                    match (id.getSymbol(scope)) {
                         | Some(sym) => match (sym.kind) {
                             | SymbolKind.Method(mi) => Result.Success(Callable.MethodInfo(mi))
                             | SymbolKind.InlineMethod(proc) => Result.Success(Callable.Inline(proc))
+                            | _ => match (ty) {
+                                | Atla.Lang.Type.Fn => Result.Success(Callable.MethodInfo(ty.ToSystemType().GetMethod("Invoke"))) // System.Func.Invoke や System.Action.Invoke など
+                                | _ => Result.Failure($"$hir is not a function.")
+                            }
                         }
                         | _ => Result.Failure($"$hir is not a function.")
                     }
@@ -72,8 +75,8 @@ namespace Atla.Lang.Hir
         public trans(mc: Mir.MethodContainer, frame: Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins]] {
             match (hir) {
                 | Hir.Stmt.Expr(e) => trans(mc, frame, scope, e).map(a => a.proc)
-                | Hir.Stmt.Let(name, expr, _) => {
-                    match (scope.resolveVar(name, expr.type.pruned())) {
+                | Hir.Stmt.Var(id, expr, _) => {
+                    match (id.getSymbol(scope)) {
                         | Some(sym) => {
                             if (sym.isLocal()) {
                                 frame.declareLocal(sym);
@@ -84,10 +87,10 @@ namespace Atla.Lang.Hir
                                      | _ => Result.Failure($"$expr has no value.")
                                 })
                             } else {
-                                Result.Failure($"$name is not declared as local variable.")
+                                Result.Failure($"$(id.name) is not declared as local variable.")
                             }
                         }
-                        | _ => Result.Failure($"$name does not exist in scope.")
+                        | _ => Result.Failure($"$(id.name) does not exist in scope.")
                     }
                 }
                 | Hir.Stmt.Return(e) => {
@@ -123,9 +126,8 @@ namespace Atla.Lang.Hir
                 | Hir.Expr.Bool(value) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.Bool(value)))))
                 | Hir.Expr.Int(value) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.Int(value)))))
                 | Hir.Expr.String(s) => Result.Success(KNormalExpr([], Some(Mir.Value.Imm(Mir.Imm.String(s)))))
-                | Hir.Expr.Id(name) => {
-                    def type = hir.type.pruned(); // TODO 毎回pruneしたくないのでキャッシュする
-                    match (scope.resolveVar(name, type)) {
+                | Hir.Expr.Id(name, _) as id => {
+                    match (id.getSymbol(scope)) {
                         | Some(sym) => match (sym.kind) {
                             | SymbolKind.Arg =>  match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 同じ名前の引数はないので名前が一致すればいい
                                 | Some(arg) => Result.Success(KNormalExpr([], Some(Mir.Value.Sym(arg))))
@@ -136,7 +138,7 @@ namespace Atla.Lang.Hir
                                 | None => Result.Failure($"Could not find $name in locals.")
                             }
                         }
-                        | _ => Result.Failure($"$name is not defined as $type type.")
+                        | _ => Result.Failure($"$name is not defined as $(id.type) type.")
                     }
                 }
                 | Hir.Expr.Apply(fn, args) => {
@@ -242,7 +244,7 @@ namespace Atla.Lang.Hir
                         body.bind(b => Result.Success(KNormalExpr(b, Some(Mir.Value.Sym(blockScope.retSymbol)))))
                     }
                 }
-                | Hir.Expr.Fn => throw Exception("")
+                | Hir.Expr.Fn => throw Exception("Internal Error") // Flatで取り除かれてるはず
                 | Hir.Expr.Switch(ents) => {
                     mutable racc = Result.Success([]);
                     def endLabel = Mir.Label(); // switch式を抜けるラベル
@@ -317,15 +319,19 @@ namespace Atla.Lang.Hir
                 | _ => return Result.Failure($"Could not resolve method $(hir.name) as $fnType.")
             }
             
-            match (trans(mc, method.frame, hir.fn.scope, hir.fn)) {
-                | Result.Success(proc) => method.body = match (proc.res) {
+            Result.Success(method)
+        }
+        
+        public implMethod(mc: Mir.MethodContainer, hir: Hir.Method, mir: Mir.Method): Result[Mir.Method] {
+            match (trans(mc, mir.frame, hir.fn.scope, hir.fn.body)) {
+                | Result.Success(proc) => mir.body = match (proc.res) {
                     | Some(r) => proc.proc.Concat([Mir.Ins.RetValue(r)]).ToList().ToNList();
                     | _ => proc.proc.Concat([Mir.Ins.Ret()]).ToList().ToNList()
                 }
                 | Result.Failure(e) => return Result.Failure(e);
             }
             
-            Result.Success(method)
+            Result.Success(mir)
         }
         
         public generateModule(asm: Mir.Assembly, hir: Hir.Module): Result[Mir.Module] {
@@ -333,10 +339,16 @@ namespace Atla.Lang.Hir
             
             // TODO type definitions
             
-            foreach (method in hir.methods) {
-                match (addMethod(mod, hir.scope, method)) {
+            // 先に関数の宣言だけして、そのあと関数本体を変換する
+            foreach ((m, r) in hir.methods.Map(m => (m, addMethod(mod, hir.scope, m)))) {
+                match (r) {
                     | Result.Failure(e) => return Result.Failure(e);
-                    | _ => {}
+                    | Result.Success(method) => {
+                        match (implMethod(mod, m, method)) {
+                            | Result.Failure(e) => return Result.Failure(e);
+                            | _ => {}
+                        }
+                    }
                 }
             }
           

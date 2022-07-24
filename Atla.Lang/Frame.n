@@ -33,7 +33,7 @@ namespace Atla.Lang
         }
         
         public declareTemp(type: Atla.Lang.Type): Symbol {
-            def sym = Symbol($"tmp`$(locs.Count())", type, SymbolKind.Local());
+            def sym = Symbol($"tmp`$(locs.Count())", type, SymbolKind.Local(), 0);
             locs.Add(sym);
             sym
         }

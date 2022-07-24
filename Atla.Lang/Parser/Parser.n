@@ -155,12 +155,19 @@ namespace Atla.Lang.Parser
                         | _ => FnArg("", TypeHint.Unit())
                     }
                 }));
-                def fnArgs: Parser[Token, list[FnArg]] = fnArg.many1();
-                fn.impl = log("fn", delim("fn")._and(tid._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(expr).map((n_rs_r, c) => {
-                        def n = n_rs_r[0][0];
-                        def rs = n_rs_r[0][1];
-                        def r = n_rs_r[1];
-                        Ast.Fn.Valid(n.value, rs, r, c).exSpan([n.span, c.span])
+                def fnArgs: Parser[Token, list[FnArg]] = fnArg.many();
+                fn.impl = log("fn", delim("fn")._and(delim("this")._andL(delim(".")).optional()._and(tid)._and(fnArgs)._andL(delim(":"))._and(typeHint)._andL(delim("="))._and(expr).map((mt_n_rs_r, c) => {
+                        def mt = mt_n_rs_r[0][0][0];
+                        def n = mt_n_rs_r[0][0][1];
+                        def rs = mt_n_rs_r[0][1];
+                        def r = mt_n_rs_r[1];
+                        if (mt.IsNone) {
+                            if (rs.Length > 0)
+                                Ast.Fn.Static(n.value, rs, r, c).exSpan([n.span, c.span])
+                            else
+                                Ast.Fn.Error("static method must have at least one argument.")
+                        } else
+                            Ast.Fn.Instance(n.value, rs, r, c).exSpan([n.span, c.span])
                     })._andL(eoi()).onceFn()
                 ).map((a, b) => b.exSpan(a)));
             }
@@ -235,8 +242,8 @@ namespace Atla.Lang.Parser
             
             // Stmt
             {
-                def letStmt = log("stmt_let", delim("let")._and(tid._andL(delim("="))._and(expr).map((id, e) => {
-                    Stmt.Let(id.value, e).exSpan([id.span, e.span])
+                def valStmt = log("stmt_val", delim("val")._and(tid._andL(delim("="))._and(expr).map((id, e) => {
+                    Stmt.Val(id.value, e).exSpan([id.span, e.span])
                 }).onceStmt()).map((a, b) => b.exSpan(a)));
                 
                 def varStmt = log("stmt_var", delim("var")._and(tid._andL(delim("="))._and(expr).map((id, e) => {
@@ -256,37 +263,37 @@ namespace Atla.Lang.Parser
                 
                 def fnStmt: Parser[Token, Stmt] = fn.map(f => Stmt.Fn(f).exSpan(f));
                 
-                stmt.impl = letStmt._or(varStmt)._or(retStmt)._or(fnStmt)._or(assignStmt)._or(exprStmt).onceStmt().consumeBlock();
+                stmt.impl = valStmt._or(varStmt)._or(retStmt)._or(fnStmt)._or(assignStmt)._or(exprStmt).onceStmt().consumeBlock();
             }
             
             // Decls
             {
-                // Fn
-                def fnDecl = fn.map(f => Decl.Fn(f).exSpan(f));
-            
-                // Class
-                def classValField: Parser[Token, ClassItem] = delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                    def (s, t) = s_t: Token.Id * TypeHint;
-                    ClassItem.Field(s.value, t, false, e)
-                })).map((a, b) => b.exSpan(a));
-                def classVarField: Parser[Token, ClassItem] = delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
-                    def (s, t) = s_t: Token.Id * TypeHint;
-                    ClassItem.Field(s.value, t, true, e)
-                })).map((a, b) => b.exSpan(a));
-                def classMethod: Parser[Token, ClassItem] = fnDecl.map(d => {
-                    def ci = match (d) {
-                        | Decl.Fn(Ast.Fn.Valid as f) => ClassItem.Method(f.name, f.args, f.body)
-                        | Decl.Fn(Ast.Fn.Error(reason)) => ClassItem.Error(reason)
-                        | Decl.Error(reason) => ClassItem.Error(reason)
-                    }
-                    ci.exSpan(d)
+                // ModuleFn
+                def modFnDecl = fn.map(f => match (f) {
+                    | Fn.Static as f => Decl.StaticFn(f).exSpan(f)
+                    | Fn.Instance as f => Decl.Error("Cannot declare Instance method in module.")
+                    | Fn.Error(s) => Decl.Error(s)
                 });
-                def classItem = classValField._or(classVarField)._or(classMethod);
-                def classDecl = delim("class")._and(
-                    tid._and(classItem.many()).map((a, items) => {
-                        Decl.Class(a.value, items).exSpan(a.span :: items.Map(i => i.span).LastN(1))
-                    })._andL(eoi()).onceDecl()
-                ).map((a, b) => b.exSpan(a));
+            
+                // Type
+                def typeValField: Parser[Token, TypeItem] = log("type_val", delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
+                    def (s, t) = s_t: Token.Id * TypeHint;
+                    TypeItem.Field(s.value, t, false, e)
+                }).onceTypeItem()).map((a, b) => b.exSpan(a)));
+                def typeVarField: Parser[Token, TypeItem] = log("type_var", delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
+                    def (s, t) = s_t: Token.Id * TypeHint;
+                    TypeItem.Field(s.value, t, true, e)
+                }).onceTypeItem()).map((a, b) => b.exSpan(a)));
+                def typeMethod: Parser[Token, TypeItem] = log("type_method", fn.map(d => TypeItem.Method(d).exSpan(d)));
+                def typeItem = typeValField._or(typeVarField)._or(typeMethod);
+                def typeDecl = log("type", delim("type")._and(
+                    tid._andL(delim("="))._and(typeItem.many()).map((a, items) => {
+                        if (items.Length > 0)
+                            Decl.Type(a.value, items).exSpan(a.span :: items.Map(i => i.span).LastN(1))
+                        else
+                            Decl.Type(a.value, items).exSpan(a.span)
+                    }).onceDecl()
+                ).map((a, b) => b.exSpan(a)));
             
                 // Import
                 def importDecl = log("import", delim("import")._and(
@@ -299,7 +306,7 @@ namespace Atla.Lang.Parser
                     })._andL(eoi()).onceDecl()
                 ).map((a, b) => b.exSpan(a)));
             
-                decl.impl = importDecl._or(classDecl)._or(fnDecl).consumeBlock();
+                decl.impl = importDecl._or(typeDecl)._or(modFnDecl).consumeBlock();
             }
             
             mod = decl.many().map(ds => {
@@ -345,10 +352,10 @@ namespace Atla.Lang.Parser
             })
         }
         
-        public onceClassItem(this p: Parser[Token, ClassItem]): Parser[Token, ClassItem] {
+        public onceTypeItem(this p: Parser[Token, TypeItem]): Parser[Token, TypeItem] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, ClassItem].Failure; // ret is always failure
-                def ret = ClassItem.Error(failure.reason);
+                def failure = ret :> Result[Token, TypeItem].Failure; // ret is always failure
+                def ret = TypeItem.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
             })

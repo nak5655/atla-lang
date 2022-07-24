@@ -13,6 +13,7 @@ using System.Reflection;
 using Atla.Lang.Parse;
 using Atla.Lang;
 
+// TODO やっぱりこのクラスはHir.Typeに移動したほうがいい（MIRに不要な型が多すぎる & HIRに依存してる）
 namespace Atla.Lang
 {
     public variant TypeError {
@@ -80,6 +81,11 @@ namespace Atla.Lang
         }
     }
     
+    public class Field {
+        public name: string;
+        public type: Type;
+    }
+    
     public variant Type: System.IEquatable[Type] {
         | Unknown {
             public override ToString(): string {
@@ -111,8 +117,25 @@ namespace Atla.Lang
             }
         }
         | Class {
-            public members: Hashtable[string, List[Type]] = Hashtable();
-            public staticMembers: Hashtable[string, List[Type]] = Hashtable();
+            public name: string;
+            public fields: List[Field];
+            public methods: List[Hir.Method];
+            public ctors: List[Hir.Ctor];
+        
+            public scope: Hir.Scope.Class;
+        
+            public this(parentScope: Hir.Scope, name: string) {
+                this.name = name;
+                fields = List();
+                methods = List();
+            
+                this.scope = Hir.Scope.Class(parentScope, name);
+            }
+            
+            //// TODO
+            //public scanErrors(): IEnumerable[(Hir.Error * Span)] {
+            //    errors.Map(e => (e, Span.zero())).Concat(methods.SelectMany(_.scanErrors()))
+            //}
         }
         | Native {
             public type: System.Type;
@@ -282,6 +305,33 @@ namespace Atla.Lang
                                 throw Exception("Could not make array type of plural types.") // TODO Result[System.Type]
                         } else {
                             throw Exception("Notimplemented") // TODO
+                        }
+                    }
+                    | Fn(args, ret) => {
+                        if (ret.isVoid()) {
+                            def ps = args.Map(_.ToSystemType()).ToArray();
+                            match (args.Length) {
+                                | 0
+                                | 1 when args.First().isVoid() => typeof(System.Action)
+                                | 1 => typeof(System.Action[_]).MakeGenericType(ps)
+                                | 2 => typeof(System.Action[_, _]).MakeGenericType(ps)
+                                | 3 => typeof(System.Action[_, _, _]).MakeGenericType(ps)
+                                | 4 => typeof(System.Action[_, _, _, _]).MakeGenericType(ps)
+                                | 5 => typeof(System.Action[_, _, _, _, _]).MakeGenericType(ps)
+                                // TODO
+                            }
+                        } else {
+                            def ps = args.Map(_.ToSystemType()).Concat([ret.ToSystemType()]).ToArray();
+                            match (args.Length) {
+                                | 0
+                                | 1 when args.First().isVoid() => typeof(System.Func[_]).MakeGenericType([ret.ToSystemType()].ToArray())
+                                | 1 => typeof(System.Func[_, _]).MakeGenericType(ps)
+                                | 2 => typeof(System.Func[_, _, _]).MakeGenericType(ps)
+                                | 3 => typeof(System.Func[_, _, _, _]).MakeGenericType(ps)
+                                | 4 => typeof(System.Func[_, _, _, _, _]).MakeGenericType(ps)
+                                | 5 => typeof(System.Func[_, _, _, _, _, _]).MakeGenericType(ps)
+                                // TODO
+                            }
                         }
                     }
                 }

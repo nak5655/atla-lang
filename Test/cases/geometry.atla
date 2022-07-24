@@ -1,0 +1,16 @@
+﻿import System::Console
+import System::MathF
+
+type Point =
+    var x: Float
+    var y: Float
+
+type Segment =
+    var fst: Point
+    var snd: Point
+
+	fn this.len: Float = MathF::Sqrt (MathF::Pow (fst.x - snd.x) 2) (MathF::Pow (fst.y - snd.y) 2)
+
+fn main (args: Array String): Unit = do
+    val seg = Segment (Point 2 5) (Point 6 9)
+    Console::WriteLine seg.len

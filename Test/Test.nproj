@@ -110,6 +110,10 @@
       <SubType>Content</SubType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="cases\geometry.atla">
+      <SubType>Content</SubType>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <Content Include="packages.config">
       <SubType>Content</SubType>
     </Content>

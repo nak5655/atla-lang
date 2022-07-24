@@ -78,10 +78,10 @@ namespace Atla.Lang.Hir
                     
                     hir.type.unify(fnType);
                 }
-                | Id(name) => {
-                    match (scope.resolveVar(name, expected)) {
+                | Id(name, _) as id => {
+                    id.type.unify(expected);
+                    match (id.getSymbol(scope)) {
                         | Some(var) => {
-                            var.type.unify(expected);
                             hir.type.unify(var.type);
                         }
                         | _ => hir.errors.Add(Error.UndefinedReference(name, expected))
@@ -93,8 +93,10 @@ namespace Atla.Lang.Hir
                 | StaticMember(tyName, name) => {
                     mutable ty = scope.resolveType(tyName);
                     match (ty.pruned()) {
-                        | Type.Class(_, staticMembers) => {
-                            def es = staticMembers.Get(name).Value.Filter(e => e.canUnify(hir.type));
+                        | Type.Class as cls => {
+                            def es = cls.methods.Map(m => m.fn.type).Filter(_.canUnify(hir.type))
+                                .Concat(cls.fields.Map(_.type).Filter(_.canUnify(hir.type)))
+                                .NToList();
                             if (es.Length == 1) {
                                 _ = hir.type.unify(es.First())
                             } else if (es.IsEmpty()) {
@@ -161,18 +163,19 @@ namespace Atla.Lang.Hir
         // 型の関係式をトップダウンで構築
         public typing(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
-                | Hir.Stmt.Let(name, rhs, _) => {
+                | Hir.Stmt.Var(id, rhs, _) => {
                     typing(scope, rhs, Type.Unknown()); // TODO type hint
-                    scope.declareLocal(name, rhs.type); // 右辺を処理してから変数宣言
+                    id.symbolCache = Some(scope.declareLocal(id.name, rhs.type)); // 右辺を処理してから変数宣言
                 }
-                | Hir.Stmt.Assign(name, rhs) => {
+                | Hir.Stmt.Assign(id, rhs) => {
                     typing(scope, rhs, Type.Unknown());
                     // 右辺から左辺の型を推論
-                    match (scope.resolveVar(name, rhs.type)) {
+                    id.type.unify(rhs.type);
+                    match (id.getSymbol(scope)) {
                         | Some(dest) => {
                             _ = dest.type.unify(rhs.type)
                         }
-                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(name, rhs.type))
+                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(id.name, rhs.type))
                     }
                 }
                 | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Unknown())

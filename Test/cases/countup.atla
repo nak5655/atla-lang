@@ -2,7 +2,7 @@
 import System::Console
 
 fn main (args: Array String): Unit = do
-    let f = countUp ()
+    val f = countUp ()
     f () # TODO for-loop
     f ()
     f ()
@@ -14,4 +14,4 @@ fn countUp (): (Unit -> Unit) = do
     fn _countUp (): Unit = do
         x = x + 1
         Console::WriteLine x
-	_countUp
+    _countUp
