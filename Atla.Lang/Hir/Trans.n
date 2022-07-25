@@ -32,7 +32,7 @@ namespace Atla.Lang.Hir
     {
         getCallable(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Expr): Result[Callable] {
             match (hir) { 
-                | Hir.Expr.Id(s, _) as id => {
+                | Hir.Expr.Id as id => {
                     def ty = hir.type.pruned();
                     match (id.getSymbol(scope)) {
                         | Some(sym) => match (sym.kind) {
@@ -97,14 +97,14 @@ namespace Atla.Lang.Hir
                     mutable retScope = scope;
                     while (true) {
                         match (retScope) {
-                            | it is Hir.Scope.Block => trans(mc, frame, scope, e).map(a => {
+                            | it is Hir.Scope.Block => _ = trans(mc, frame, scope, e).map(a => {
                                  // ブロックスコープならReturnじゃなくてJumpする
                                 match (a.res) {
                                     | None => a.proc.Concat([Mir.Ins.Jump(it.endLabel)])
                                     | Some(v) => a.proc.Concat([Mir.Ins.Assign(it.retSymbol, v), Mir.Ins.Jump(it.endLabel)])
                                 }
                             })
-                            | it is Hir.Scope.Fn => trans(mc, frame, scope, e).map(a => {
+                            | Hir.Scope.Fn => _ = trans(mc, frame, scope, e).map(a => {
                                 match (a.res) {
                                     | Some(v) => a.proc.Concat([Mir.Ins.RetValue(v)])
                                     | _ => a.proc.Concat([Mir.Ins.Ret()])

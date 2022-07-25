@@ -43,6 +43,8 @@ namespace Atla.Lang
     
     public variant TypeHint: HasSpan[TypeHint] {
         | None
+        // Primitives (Nameだとスコープで意味が変わるので一意に指定できないといけない)
+        | Unit
         | Name {
             // TODO class path
             name: string;
@@ -70,15 +72,12 @@ namespace Atla.Lang
         | Generics { _base: TypeHint; _params: list[TypeHint] }
         
         public resolve(scope: TypeScope): Type { match (this) {
+            | TypeHint.Unit => Type.Unit
             | TypeHint.None => Type.Unknown()
             | TypeHint.Name(name) => scope.resolveType(name)
             | TypeHint.Fn(args, ret) => Type.Fn(args.Map(arg => arg.resolve(scope)), ret.resolve(scope))
             | TypeHint.Generics(_base, _params) => Type.Generics(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
         }}
-        
-        public static Unit(): TypeHint {
-            Name(Type.UNIT_NAME)
-        }
     }
     
     public class TypeField {
@@ -185,12 +184,12 @@ namespace Atla.Lang
         }
         
         // Primery Types
-        public static UNIT_NAME: string = "Unit";
-        public static BOOL_NAME: string = "Bool";
-        public static INT_NAME: string = "Int";
-        public static FLOAT_NAME: string = "Float";
-        public static DOUBLE_NAME: string = "Double";
-        public static STRING_NAME: string = "String";
+        public static Unit: Type.Native = Type.Native(typeof(void));
+        public static Bool: Type.Native = Type.Native(typeof(bool));
+        public static Int: Type.Native = Type.Native(typeof(int));
+        public static Float: Type.Native = Type.Native(typeof(float));
+        public static Double: Type.Native = Type.Native(typeof(double));
+        public static String: Type.Native = Type.Native(typeof(string));
         
         mutable _systemType: System.Type; // キャッシュ
         public errors: List[TypeError] = List();
@@ -204,8 +203,8 @@ namespace Atla.Lang
             match ((this, other)) {
                 | (Unknown, _) => true
                 | (_, Unknown) => true
-                | (e is Error, _) => false
-                | (_, e is Error) => false
+                | (Error, _) => false
+                | (_, Error) => false
                 | (Var(t), _) => t._canUnify(other)
                 | (OneOf(ts), _) => ts.Any(_._canUnify(other))
                 | (_, OneOf(ts)) => ts.Any(_.canUnify(this)) // thisはprunedしてないので再帰の仕方が少し違うので注意
@@ -358,6 +357,7 @@ namespace Atla.Lang
                             }
                         }
                     }
+                    | Error as e => throw Exception(e.ToString())
                 }
             }
             _systemType
@@ -367,6 +367,7 @@ namespace Atla.Lang
             match (this) {
                 | Unknown => (this: object).GetHashCode()
                 | Var(t) => t.GetHashCode()
+                | OneOf => (this: object).GetHashCode()
                 | Define => (this: object).GetHashCode()
                 | Native(t) => t.GetHashCode()
                 | Fn(args, ret) => args.Sum(_.GetHashCode()) + ret.GetHashCode()

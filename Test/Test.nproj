@@ -21,6 +21,7 @@
     <Name>Test</Name>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
+    <NoWarn>10003</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>

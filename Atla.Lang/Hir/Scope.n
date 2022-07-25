@@ -22,32 +22,29 @@ namespace Atla.Lang.Hir
             public this() {
                 depth = 0;
                 
-                typeTable.Add(Atla.Lang.Type.UNIT_NAME, Atla.Lang.Type.Native(typeof(void)));
-                typeTable.Add(Atla.Lang.Type.BOOL_NAME, Atla.Lang.Type.Native(typeof(bool)));
-                typeTable.Add(Atla.Lang.Type.INT_NAME, Atla.Lang.Type.Native(typeof(int)));
-                typeTable.Add(Atla.Lang.Type.FLOAT_NAME, Atla.Lang.Type.Native(typeof(float)));
-                typeTable.Add(Atla.Lang.Type.DOUBLE_NAME, Atla.Lang.Type.Native(typeof(double)));
-                typeTable.Add(Atla.Lang.Type.STRING_NAME, Atla.Lang.Type.Native(typeof(string)));
+                typeTable.Add("Unit", Type.Unit);
+                typeTable.Add("Bool", Type.Bool);
+                typeTable.Add("Int", Type.Int);
+                typeTable.Add("Float", Type.Float);
+                typeTable.Add("Double", Type.Double);
+                typeTable.Add("String", Type.String);
             
-                def tbool = Atla.Lang.Type.Native(typeof(bool));
-                def tint = Atla.Lang.Type.Native(typeof(int));
-                def tdouble = Atla.Lang.Type.Native(typeof(double));
-                varTable.Add(Symbol("+", Atla.Lang.Type.Fn([tint, tint], tint), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                varTable.Add(Symbol("+", Atla.Lang.Type.Fn([Type.Int, Type.Int], Type.Int), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Add, arg1),
                 ])), depth));
-                varTable.Add(Symbol("+", Atla.Lang.Type.Fn([tdouble, tdouble], tdouble), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                varTable.Add(Symbol("+", Atla.Lang.Type.Fn([Type.Double, Type.Double], Type.Double), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Add, arg1),
                 ])), depth));
-                varTable.Add(Symbol("-", Atla.Lang.Type.Fn([tint, tint], tint), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                varTable.Add(Symbol("-", Atla.Lang.Type.Fn([Type.Int, Type.Int], Type.Int), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Sub, arg1),
                 ])), depth));
-                varTable.Add(Symbol("-", Atla.Lang.Type.Fn([tdouble, tdouble], tdouble), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                varTable.Add(Symbol("-", Atla.Lang.Type.Fn([Type.Double, Type.Double], Type.Double), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Sub, arg1),
                 ])), depth));
-                varTable.Add(Symbol("||", Atla.Lang.Type.Fn([tbool, tbool], tbool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                varTable.Add(Symbol("||", Atla.Lang.Type.Fn([Type.Bool, Type.Bool], Type.Bool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Or, arg1),
                 ])), depth));
-                varTable.Add(Symbol("==", Atla.Lang.Type.Fn([tint, tint], tbool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                varTable.Add(Symbol("==", Atla.Lang.Type.Fn([Type.Int, Type.Int], Type.Bool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Eq, arg1),
                 ])), depth));
             }
@@ -133,7 +130,7 @@ namespace Atla.Lang.Hir
         implTable: Hashtable[string, Impl] = Hashtable();
         public mutable depth: int;
         
-        public parent(): option[Scope] {
+        public getParent(): option[Scope] {
             match (this) {
                 | Global => None()
                 | it is Module => Some(it.parent)
@@ -143,7 +140,7 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public name(): option[string] {
+        public getName(): option[string] {
             match (this) {
                 | Global => None()
                 | it is Module => Some(it.name)
@@ -153,7 +150,7 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public retType(): option[Atla.Lang.Type] {
+        public getRetType(): option[Atla.Lang.Type] {
             match (this) {
                 | Global => None()
                 | Module => None()
@@ -164,9 +161,9 @@ namespace Atla.Lang.Hir
         }
         
         public path(): string {
-            def p = parent().Map(_.path()).WithDefault("");
+            def p = getParent().Map(_.path()).WithDefault("");
             
-            match (name()) {
+            match (getName()) {
                 | Some(s) => if (p.Length > 0) $"$p::$s" else s
                 | None => p
             }
@@ -179,7 +176,7 @@ namespace Atla.Lang.Hir
         
         // TODO 経路圧縮
         public globalScope(): Scope {
-            match (parent()) {
+            match (getParent()) {
                 | Some(p) => p.globalScope()
                 | _ => this
             }
@@ -194,7 +191,7 @@ namespace Atla.Lang.Hir
             if (typeTable.ContainsKey(id)) {
                 typeTable.Get(id).Value
             } else {
-                match (parent()) {
+                match (getParent()) {
                     | Some(p) => p.resolveType(id)
                     | _ => Atla.Lang.Type.Error(TypeError.Undefined(id))
                 }
@@ -212,7 +209,7 @@ namespace Atla.Lang.Hir
             def syms = varTable.Filter(s => s.name == id && type.canUnify(s.type)) : list[Symbol];
             
             if (syms.Length == 0) {
-                match (parent()) {
+                match (getParent()) {
                     | Some(s) => s.resolveVar(id, type)
                     | _ => []
                 }

@@ -21,7 +21,7 @@ namespace Test.MirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
             
             def code = Misc.readCase("hello.atla");
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
             def mir = Atla.Lang.Misc.compile(asm).modules["main"];
             
             Assert.AreEqual(1, mir.methods.Count());
@@ -34,7 +34,7 @@ namespace Test.MirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
             
             def code = Misc.readCase("fibonacci.atla");
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
             def mir = Atla.Lang.Misc.compile(asm).modules["main"];
             
             Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
@@ -45,7 +45,7 @@ namespace Test.MirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
             
             def code = Misc.readCase("countup.atla");
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
             def mir = Atla.Lang.Misc.compile(asm).modules["main"];
             
             Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.

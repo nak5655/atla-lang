@@ -35,7 +35,7 @@ namespace Atla.Lang.Hir
                 declareTypes(hir.scope, ty);
             }
             foreach (method in hir.methods) {
-                hir.scope.declareLocal(method.name, method.fn.type)
+                _ = hir.scope.declareLocal(method.name, method.fn.type)
             }
             
             // next, analyze the type hints.
@@ -63,7 +63,7 @@ namespace Atla.Lang.Hir
         
         public typing(scope: Scope, hir: Atla.Lang.Type.Define): void {
             foreach (field in hir.fields) {
-                field.type.unify(field.typeHint.resolve(hir.scope))
+                _ = field.type.unify(field.typeHint.resolve(hir.scope))
             }
             foreach (method in hir.methods) {
                 typing(hir.scope, method.fn, Type.Unknown());
@@ -72,15 +72,15 @@ namespace Atla.Lang.Hir
         
         // トップダウンで型を構築してボトムアップで型推論
         public typing(scope: Scope, hir: Hir.Expr, expected: Type): void {
-            hir.type.unify(hir.typeHint.resolve(scope));
-            hir.type.unify(expected);
+            _ = hir.type.unify(hir.typeHint.resolve(scope));
+            _ = hir.type.unify(expected);
             
             match (hir) {
-                | Unit => hir.type.unify(scope.globalScope().resolveType(Type.UNIT_NAME)) // オーバーロード対策で念のためGlobalScopeで名前解決する
-                | Bool => hir.type.unify(scope.globalScope().resolveType(Type.BOOL_NAME))
-                | Int => hir.type.unify(scope.globalScope().resolveType(Type.INT_NAME))
-                | Double => hir.type.unify(scope.globalScope().resolveType(Type.DOUBLE_NAME))
-                | String => hir.type.unify(scope.globalScope().resolveType(Type.STRING_NAME))
+                | Unit => _ = hir.type.unify(Type.Unit)
+                | Bool => _ = hir.type.unify(Type.Bool)
+                | Int => _ = hir.type.unify(Type.Int)
+                | Double => _ = hir.type.unify(Type.Double)
+                | String => _ = hir.type.unify(Type.String)
                 | Block(blockScope, stmts) => {
                     foreach (stmt in stmts) {
                         typing(blockScope, stmt);
@@ -88,15 +88,15 @@ namespace Atla.Lang.Hir
                     
                     when (stmts.Count() > 0) {
                         match (stmts.Last()) {
-                            | Hir.Stmt.Expr(e) => blockScope.retType.unify(e.type)  // ブロックの最後の式は返り値とする
+                            | Hir.Stmt.Expr(e) => _ = blockScope.retType.unify(e.type)  // ブロックの最後の式は返り値とする
                             | Hir.Stmt.Return => ()
-                            | _ => blockScope.retType.unify(scope.globalScope().resolveType(Type.UNIT_NAME)) // ただの文ならunit型とする
+                            | _ => _ = blockScope.retType.unify(Type.Unit) // ただの文ならunit型とする
                         }
                     }
                     
                     
                     // スコープの返り値で推論
-                    hir.type.unify(blockScope.retType);
+                    _ = hir.type.unify(blockScope.retType);
                 }
                 | Fn(args, body, bodyScope) => {
                     def fnType: Type.Fn = match (hir.type.unVar()) {
@@ -107,16 +107,16 @@ namespace Atla.Lang.Hir
                     foreach ((arg, t) in args.Zip(fnType.args)) {
                         bodyScope.declareArg(arg.name, t);
                     }
-                    bodyScope.retType.unify(fnType.ret);
+                    _ = bodyScope.retType.unify(fnType.ret);
                     typing(bodyScope, body, fnType.ret);
                     
-                    hir.type.unify(fnType);
+                    _ = hir.type.unify(fnType);
                 }
                 | Id(name, _) as id => {
-                    id.type.unify(expected);
+                    _ = id.type.unify(expected);
                     match (id.getSymbol(scope)) {
                         | Some(var) => {
-                            hir.type.unify(var.type);
+                            _ = hir.type.unify(var.type);
                         }
                         | _ => hir.errors.Add(Error.UndefinedReference(name, expected))
                     }
@@ -193,10 +193,10 @@ namespace Atla.Lang.Hir
                     match (fn.type.pruned()) {
                         | Type.Fn(xs, y) when xs.Length == args.Length => {
                             foreach ((arg, x) in args.Zip(xs)) {
-                                arg.type.unify(x)
+                                _ = arg.type.unify(x)
                             }
                             
-                            hir.type.unify(y)
+                            _ = hir.type.unify(y)
                         }
                         | Type.Error => () // エラーならそれ以上推論しない
                         | t => fn.type.errors.Add(TypeError.InferenceFailure($"Could not infer $t as a function."))
@@ -205,7 +205,7 @@ namespace Atla.Lang.Hir
                 | Switch(entries) => {
                     foreach (entry in entries) {
                         // 条件式をBoolとして型推論
-                        typing(scope, entry.pred, scope.globalScope().resolveType(Type.BOOL_NAME));
+                        typing(scope, entry.pred, Type.Bool);
                         // bodyスコープでこの式の型として型推論
                         typing(entry.bodyScope, entry.body, hir.type);
                     }
@@ -223,7 +223,7 @@ namespace Atla.Lang.Hir
                 | Hir.Stmt.Assign(id, rhs) => {
                     typing(scope, rhs, Type.Unknown());
                     // 右辺から左辺の型を推論
-                    id.type.unify(rhs.type);
+                    _ = id.type.unify(rhs.type);
                     match (id.getSymbol(scope)) {
                         | Some(dest) => {
                             _ = dest.type.unify(rhs.type)
@@ -234,7 +234,7 @@ namespace Atla.Lang.Hir
                 | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Unknown())
                 | Hir.Stmt.Return(value) => {
                     typing(scope, value, Type.Unknown());
-                    scope.retType().Map(t => t.unify(value.type)) // 返り値でスコープの型を推論
+                    _ = scope.getRetType().Map(t => t.unify(value.type)) // 返り値でスコープの型を推論
                 }
             }
         }
@@ -244,7 +244,7 @@ namespace Atla.Lang.Hir
         public static toFnType(this methodInfo: System.Reflection.MethodInfo, scope: Scope): Atla.Lang.Type.Fn {
             def pTypes = methodInfo.GetParameters().Map(p => p.ParameterType);
             def argTypes = if (pTypes.IsEmpty())
-                [scope.globalScope().resolveType(Type.UNIT_NAME)] // 引数がないときは代わりにUnitを引数とする
+                [Type.Unit] // 引数がないときは代わりにUnitを引数とする
             else
                 pTypes.Map(t => Type.Native(t)).ToNList();
             Atla.Lang.Type.Fn(argTypes, Type.Native(methodInfo.ReturnType));
