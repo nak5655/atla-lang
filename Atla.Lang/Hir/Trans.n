@@ -314,9 +314,11 @@ namespace Atla.Lang.Hir
             }
             
             // Bodyを変換する前にSymbolにMethodInfoを設定する（再帰関数に対応できる）
-            match (scope.resolveVar(hir.name, fnType)) {
-                | Some(Symbol as sym) => sym.kind = SymbolKind.Method(method.builder)
-                | _ => return Result.Failure($"Could not resolve method $(hir.name) as $fnType.")
+            def syms = scope.resolveVar(hir.name, fnType);
+            if (syms.Count() == 1) {
+                syms.First().kind = SymbolKind.Method(method.builder);
+            } else {
+                return Result.Failure($"Could not resolve method $(hir.name) as $fnType.")
             }
             
             Result.Success(method)

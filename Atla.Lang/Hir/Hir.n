@@ -229,10 +229,10 @@ namespace Atla.Lang.Hir
             
             public getSymbol(scope: Hir.Scope): option[Symbol] {
                 when (symbolCache.IsNone) {
-                    symbolCache = scope.resolveVar(name, type.pruned());
-                    match (symbolCache) {
-                        | Some(s) => _ = s.type.unify(type) // Id式の型とSymbolの型は一致する
-                        | _ => {}
+                    def syms = scope.resolveVar(name, type.pruned());
+                    when (syms.Count() == 1) { // シンボルが一つに絞れていれば成功
+                        symbolCache = Some(syms.First());
+                        _ = symbolCache.Value.type.unify(type) // Id式の型とSymbolの型は一致する
                     }
                 }
                 symbolCache
@@ -382,7 +382,9 @@ namespace Atla.Lang.Hir
         public errors: List[Error] = List();
         
         public scanErrors(): IEnumerable[(Error * Span)] {
-            errors.Map(e => (e, Span.zero())).Concat(methods.SelectMany(_.scanErrors()))
+            errors.Map(e => (e, Span.zero()))
+                .Concat(methods.SelectMany(_.scanErrors()))
+                .Concat(types.SelectMany(t => t.scanMyErrors(Span.zero()))) // scanErrorsではないので注意 (型定義は外部から参照されるので無限ループ防止)
         }
     }
     

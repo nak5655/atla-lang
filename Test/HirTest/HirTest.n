@@ -18,6 +18,15 @@ namespace Test.HirTest
     class HirTest
     {
         [Test]
+        public HirTypeUnifyTest1(): void {
+            def tint = Type.Native(typeof(int));
+            def t1 = tint;
+            def t2 = Type.OneOf([Type.Var(tint)]);
+            def res = t1.unify(t2).pruned();
+            Assert.AreEqual(t1, res);
+        }
+        
+        [Test]
         public HirEasyTypingTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
             

@@ -122,7 +122,26 @@ namespace Atla.Lang.Hir
                     }
                 }
                 | Member(expr, name) => {
-                    typing(scope, expr, Type.Unknown())
+                    typing(scope, expr, Type.Unknown());
+                    
+                    def ty = match (expr.type.pruned()) {
+                        | Type.Define as it => {
+                            def fieldsTypes = it.fields.Filter(fi => fi.name == name).Map(_.type);
+                            def methodsTypes = it.methods.Filter(mt => mt.name == name).Map(m => match (m.fn.type.pruned()) {
+                                | Type.Fn(args, ret) when args.Length > 0 => if (args.First().canUnify(it)) {
+                                    // 最初の引数に自身を適用する
+                                    if (args.Length == 1) ret else Type.Fn(args.Tail, ret)
+                                } else {
+                                    null // 最初の引数の型が違う
+                                }
+                                | _ => null // そもそも関数じゃない
+                            }).Filter(t => t != null); // 合わなかった型を除く
+                            Type.OneOf(fieldsTypes.Concat(methodsTypes).NToList())
+                        }
+                        // TODO Native
+                        | _ => Type.Unknown()
+                    };
+                    _ = hir.type.unify(ty);
                 }
                 | StaticMember(tyName, name) => {
                     mutable ty = scope.resolveType(tyName);
@@ -134,7 +153,7 @@ namespace Atla.Lang.Hir
                             if (es.Length == 1) {
                                 _ = hir.type.unify(es.First())
                             } else if (es.IsEmpty()) {
-                                hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
+                                hir.type.errors.Add(TypeError.InferenceFailure($"Could not resolve $tyName::$name as $(hir.type.pruned())"))
                             } else {
                                _ = hir.type.unify(Type.OneOf(es))
                             }
@@ -156,7 +175,7 @@ namespace Atla.Lang.Hir
                             } else if (overloads.Length > 1) {
                                 _ = hir.type.unify(Type.OneOf(overloads.Map(m => m.toFnType(scope))))
                             } else {
-                                hir.type.errors.Add(TypeError.Undefined($"$tyName::$name"))
+                                hir.type.errors.Add(TypeError.InferenceFailure($"Could not resolve $tyName::$name as $(hir.type.pruned())"))
                             }
                         }
                         | _ => hir.type.errors.Add(TypeError.Undefined(tyName))

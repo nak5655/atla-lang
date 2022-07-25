@@ -91,6 +91,10 @@ namespace Atla.Lang
             this.typeHint = typeHint;
             this.type = Type.Var();
         }
+        
+        public scanErrors(defaultSpan: Span): IEnumerable[Hir.Error * Span] {
+            type.scanErrors(defaultSpan)
+        }
     }
     
     public variant Type: System.IEquatable[Type] {
@@ -136,6 +140,15 @@ namespace Atla.Lang
                 methods = List();
             
                 this.scope = Hir.Scope.Type(parentScope, name);
+            }
+            
+            public scanMyErrors(defaultSpan: Span): IEnumerable[Hir.Error * Span] {
+                fields.SelectMany(_.scanErrors(defaultSpan))
+                    .Concat(methods.SelectMany(_.scanErrors()))
+            }
+            
+            public override ToString(): string {
+                $"Define($name)"
             }
         }
         | Native {
@@ -255,7 +268,7 @@ namespace Atla.Lang
         public pruned(): Type {
             match (this) {
                 | Var(t) => t.pruned()
-                | OneOf(ts) => if (ts.Length == 1) ts.First() else if (ts.Length == 0) Type.Error(TypeError.InferenceFailure("No one match for this type.")) else Type.Error(TypeError.Ambiguous(ts))
+                | OneOf(ts) => if (ts.Length == 1) ts.First().pruned() else if (ts.Length == 0) Type.Error(TypeError.InferenceFailure("No one match for this type.")) else Type.Error(TypeError.Ambiguous(ts))
                 | Fn(args, ret) => Fn(args.Map(_.pruned()), ret.pruned())
                 | Generics(b, ps) => Generics(b.pruned(), ps.Map(_.pruned()))
                 | _ => this
@@ -282,7 +295,7 @@ namespace Atla.Lang
             
             match (other) {
                 | Var(t) => occursIn(t)
-                | OneOf(ts) => ts.Any(t => occursIn(t))
+                | OneOf => false // 型を構成しているわけではないのでチェックしない(してはいけない 常にUnifyできる)
                 | Fn(args, ret) => args.Any(arg => occursIn(arg)) || occursIn(ret)
                 | Generics(b, ps) => occursIn(b) || ps.Any(p => occursIn(p))
                 | _ => false
@@ -294,7 +307,7 @@ namespace Atla.Lang
                 | Var(t) => t.scanErrors(defaultSpan)
                 | Fn(args, ret) => args.SelectMany(_.scanErrors(defaultSpan)).Concat(ret.scanErrors(defaultSpan))
                 | Generics(b, ps) => ps.SelectMany(_.scanErrors(defaultSpan)).Concat(b.scanErrors(defaultSpan))
-                | Define => [] // ここで型定義の内容をスキャンすると無限ループするのでここでエラーチェックはしない（Hirのツリーでスキャンされるので問題ない）
+                | Define => [] // ここで型定義の内容をスキャンすると無限ループするのでここでエラーチェックはしない（個別にチェックする）
                 | _ => []
             };
             ret.Concat(errors.Map(e => (Hir.Error.Type(e), defaultSpan)))

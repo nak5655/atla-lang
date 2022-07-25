@@ -29,12 +29,19 @@ namespace Atla.Lang.Hir
                 typeTable.Add(Atla.Lang.Type.DOUBLE_NAME, Atla.Lang.Type.Native(typeof(double)));
                 typeTable.Add(Atla.Lang.Type.STRING_NAME, Atla.Lang.Type.Native(typeof(string)));
             
-                def tint = Atla.Lang.Type.Native(typeof(int));
                 def tbool = Atla.Lang.Type.Native(typeof(bool));
+                def tint = Atla.Lang.Type.Native(typeof(int));
+                def tdouble = Atla.Lang.Type.Native(typeof(double));
                 varTable.Add(Symbol("+", Atla.Lang.Type.Fn([tint, tint], tint), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Add, arg1),
                 ])), depth));
+                varTable.Add(Symbol("+", Atla.Lang.Type.Fn([tdouble, tdouble], tdouble), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Add, arg1),
+                ])), depth));
                 varTable.Add(Symbol("-", Atla.Lang.Type.Fn([tint, tint], tint), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Sub, arg1),
+                ])), depth));
+                varTable.Add(Symbol("-", Atla.Lang.Type.Fn([tdouble, tdouble], tdouble), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Sub, arg1),
                 ])), depth));
                 varTable.Add(Symbol("||", Atla.Lang.Type.Fn([tbool, tbool], tbool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
@@ -201,22 +208,16 @@ namespace Atla.Lang.Hir
         }
         
         // 名前解決での優先順で返す（内側のスコープを優先）
-        public resolveVar(id: string, type: Atla.Lang.Type): option[Symbol] {
+        public resolveVar(id: string, type: Atla.Lang.Type): IEnumerable[Symbol] {
             def syms = varTable.Filter(s => s.name == id && type.canUnify(s.type)) : list[Symbol];
             
             if (syms.Length == 0) {
                 match (parent()) {
                     | Some(s) => s.resolveVar(id, type)
-                    | _ => None()
+                    | _ => []
                 }
-            } else if (syms.Length == 1) {
-                Some(syms.First())
             } else {
-                // 複数の宣言にマッチしてもエラー
-                def e = Atla.Lang.Type.Var(Atla.Lang.Type.Error(TypeError.Ambiguous(syms.Map(_.type))));
-                def sym = Symbol(id, e, SymbolKind.Local(), depth);
-                varTable.Add(sym);
-                Some(sym) // エラーのシンボルとして返す
+                syms // overloadなどで複数にマッチしてもいい
             }
         }
     }
