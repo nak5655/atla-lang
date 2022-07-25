@@ -32,7 +32,7 @@ namespace Atla.Lang.Parser
             if (chars.Length > 0) {
                 def a = chars.First().pos;
                 def b = chars.Last().pos;
-                this.span = Span(a, Position(b.lines, b.line, b.col + 1, b.index + 1)); // add 1 to span.hi.col to include the last charactor.
+                this.span = Span(a, b.right()); // add 1 to span.hi.col to include the last charactor.
             } else {
                 this.span = Span.zero();
             }
@@ -148,6 +148,18 @@ namespace Atla.Lang.Parser
                 $"Int($(value))"
             }
         }
+        | Double {
+            public value: double;
+            
+            public this(s: SourceString) {
+                value = double.Parse(s.string);
+                span = s.span;
+            }
+            
+            public override ToString(): string {
+                $"Double($(value))"
+            }
+        }
         | String {
             public value: string;
             
@@ -179,6 +191,7 @@ namespace Atla.Lang.Parser
         uintNotZeroRaw: Parser[SourceChar, SourceString];
         uintRaw: Parser[SourceChar, SourceString];
         intRaw: Parser[SourceChar, SourceString];
+        doubleRaw: Parser[SourceChar, SourceString];
         
         delimiters: list[string];
         signDelims: HashSet[string];
@@ -197,6 +210,7 @@ namespace Atla.Lang.Parser
         op: Parser[SourceChar, Token];
         id: Parser[SourceChar, Token];
         int: Parser[SourceChar, Token];
+        double: Parser[SourceChar, Token];
         str: Parser[SourceChar, Token];
         
         tokens: Parser[SourceChar, list[Token]];
@@ -219,6 +233,10 @@ namespace Atla.Lang.Parser
                     | Some(c) => SourceString(c.char.ToString() + b.string).addSpan(Span(c.pos, b.span.hi))
                     | _ => b
                 }
+            });
+            doubleRaw = intRaw._and(satisfy("dot", c => c.char == '.'))._and(digit.many1()).map((a_b, c) => {
+                def s = a_b[0].string + a_b[1].char + c.Map(sc => sc.char).joinToString("");
+                SourceString(s).addSpan(Span(a_b[0].span.lo, c.Last().pos.right()))
             });
         
             delimiters = [
@@ -243,7 +261,7 @@ namespace Atla.Lang.Parser
         
             comment = char('#')._and(satisfy("comment", c => c.char != '\n').many()).map((s, cs) => {
                 def content = SourceString(cs);
-                def span = Span(s.pos, Position(s.pos.lines, s.pos.line, s.pos.col + 1, s.pos.index + 1)) + content.span;
+                def span = Span(s.pos, s.pos.right()) + content.span;
                 Token.Comment(content.string, span)
             });
             ws = satisfy("whitespace", c => " \n\r\t".Contains(c.char));
@@ -281,16 +299,17 @@ namespace Atla.Lang.Parser
                     Token.Id(s)
                 }
             });
+            double = doubleRaw.map(x => Token.Double(x));
             int = intRaw.map(x => {
                 Token.Int(x)
             });
             str = char('\"')._and(satisfy("str", c => c.char != '\"').many())._and(char('\"')).map((l_xs, r) => {
                 def s = SourceString(l_xs[1]);
-                def span = Span(l_xs[0].pos, Position(r.pos.lines, r.pos.line, r.pos.col + 1, r.pos.index + 1));
+                def span = Span(l_xs[0].pos, r.pos.right());
                 Token.String(s.string, span)
             });
             
-            tokens = ws.many()._andR(str._or(int)._or(op)._or(delim)._or(id)._or(comment)).sepBy(ws.many())._andL(ws.many())._andL(eoi());
+            tokens = ws.many()._andR(str._or(double)._or(int)._or(op)._or(delim)._or(id)._or(comment)).sepBy(ws.many())._andL(ws.many())._andL(eoi());
         }
         
         public tokenize(text: string): Result[SourceChar, list[Token]] {

@@ -7,6 +7,7 @@ using Nemerle.Imperative;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Math;
 
 using Atla.Lang;
 
@@ -14,24 +15,56 @@ namespace Atla.Lang.Hir
 {
     public class Typing
     {
-        public this() {
-        }
-        
         public typing(hir: Hir.Module): void {
             foreach (import in hir.imports) {
                 // TODO: import atla module (non Native)
-                def type = Type.Native(System.Type.GetType(import.dotted()));
-                // declare short name (e.g. "System.String" is declared as "String")
-                when (!import.path.IsEmpty()) {
-                    hir.scope.declareType(import.path.Last(), type);
+                def sysType = System.Type.GetType(import.dotted());
+                if (sysType != null) {
+                    def type = Type.Native(sysType);
+                    // declare short name (e.g. "System.String" is declared as "String")
+                    when (!import.path.IsEmpty()) {
+                        hir.scope.declareType(import.path.Last(), type);
+                    }
+                } else {
+                    // TODO importエラー
                 }
             }
             
             // first, declare members
+            foreach (ty in hir.types) {
+                declareTypes(hir.scope, ty);
+            }
             foreach (method in hir.methods) {
                 hir.scope.declareLocal(method.name, method.fn.type)
             }
+            
             // next, analyze the type hints.
+            foreach (ty in hir.types) {
+                typing(hir.scope, ty);
+            }
+            foreach (method in hir.methods) {
+                typing(hir.scope, method.fn, Type.Unknown());
+            }
+        }
+        
+        // 再帰的に型を探して宣言する
+        // TODO 型の入れ子 と 匿名型
+        public declareTypes(scope: Scope, hir: Atla.Lang.Type.Define): void {
+            scope.declareType(hir.name, hir);
+            
+            // デフォルトコンストラクタ
+            _ = scope.declareLocal(hir.name, Type.Fn(hir.fields.Map(_.type), hir));
+            
+            // フィールド
+            foreach (field in hir.fields) {
+                _ = hir.scope.declareLocal(field.name, field.type);
+            }
+        }
+        
+        public typing(scope: Scope, hir: Atla.Lang.Type.Define): void {
+            foreach (field in hir.fields) {
+                field.type.unify(field.typeHint.resolve(hir.scope))
+            }
             foreach (method in hir.methods) {
                 typing(hir.scope, method.fn, Type.Unknown());
             }
@@ -46,6 +79,7 @@ namespace Atla.Lang.Hir
                 | Unit => hir.type.unify(scope.globalScope().resolveType(Type.UNIT_NAME)) // オーバーロード対策で念のためGlobalScopeで名前解決する
                 | Bool => hir.type.unify(scope.globalScope().resolveType(Type.BOOL_NAME))
                 | Int => hir.type.unify(scope.globalScope().resolveType(Type.INT_NAME))
+                | Double => hir.type.unify(scope.globalScope().resolveType(Type.DOUBLE_NAME))
                 | String => hir.type.unify(scope.globalScope().resolveType(Type.STRING_NAME))
                 | Block(blockScope, stmts) => {
                     foreach (stmt in stmts) {
@@ -93,7 +127,7 @@ namespace Atla.Lang.Hir
                 | StaticMember(tyName, name) => {
                     mutable ty = scope.resolveType(tyName);
                     match (ty.pruned()) {
-                        | Type.Class as cls => {
+                        | Type.Define as cls => {
                             def es = cls.methods.Map(m => m.fn.type).Filter(_.canUnify(hir.type))
                                 .Concat(cls.fields.Map(_.type).Filter(_.canUnify(hir.type)))
                                 .NToList();

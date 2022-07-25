@@ -44,5 +44,9 @@ namespace Atla.Lang.Parse
         public override ToString(): string {
             $"$(line):$(col)"
         }
+        
+        public right(): Position {
+            Position(lines, line, col + 1, index + 1);
+        }
     }
 }

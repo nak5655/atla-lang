@@ -71,6 +71,7 @@ namespace Atla.Lang.Ast
     public variant Expr: HasSpan[Expr] {
         | Unit
         | Int { value: int }
+        | Double { value: double }
         | String { value: string }
         | Id { value: string }
         | Block { stmts: list[Stmt] }

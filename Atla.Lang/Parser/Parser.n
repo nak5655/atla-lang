@@ -36,7 +36,7 @@ namespace Atla.Lang.Parser
                 | Some(t) => t.span
                 | _ when index >= data.Length && data.Length > 0 => {
                     def p = data.Last().span.hi;
-                    Span(p, Position(p.lines, p.line, p.col + 1, p.index + 1)) // end of data
+                    Span(p, p.right()) // end of data
                 }
                 | _ => Span.zero()
             }
@@ -177,6 +177,7 @@ namespace Atla.Lang.Parser
                 def id = log("expr_id", tid.map(t => Expr.Id(t.value).exSpan(t)));
                 def unit = log("expr_unit", delim("(")._and(delim(")")).map((a, b) => Expr.Unit().exSpan([a, b])));
                 def int = log("expr_int", satisfy("int", _ is Token.Int).map(t => Expr.Int((t :> Token.Int).value).exSpan(t)));
+                def double = log("expr_double", satisfy("double", _ is Token.Double).map(t => Expr.Double((t :> Token.Double).value).exSpan(t)));
                 def str = log("expr_string", satisfy("string", _ is Token.String).map(t => Expr.String((t :> Token.String).value).exSpan(t)));
                 def paren = log("expr_paren", delim("(")._andR(expr)._andL(delim(")")));
                 def blockExpr = log("do", delim("do")._and(
@@ -206,7 +207,7 @@ namespace Atla.Lang.Parser
                     }).onceExpr()
                 ).map((a, b) => b.exSpan(a)).consumeBlock());
                 
-                def factor = str._or(ifExpr)._or(matchExpr)._or(blockExpr)._or(id)._or(int)._or(unit)._or(paren);
+                def factor = str._or(ifExpr)._or(matchExpr)._or(blockExpr)._or(id)._or(int)._or(double)._or(unit)._or(paren);
             
                 // メンバーアクセス
                 def member = log("expr_member", factor._andL(delim("."))._and(tid).map((a, b) => Expr.Member(a, b.value).exSpan([a.span, b.span])));

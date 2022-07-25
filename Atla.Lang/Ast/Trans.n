@@ -62,8 +62,8 @@ namespace Atla.Lang.Ast
                 }
                 | Ast.Stmt.Ret(expr) => Hir.Stmt.Return(trans(scope, expr))
                 | Ast.Stmt.Fn(f) => {
-                    def (name, fn) = trans(scope, f);
-                    Hir.Stmt.Var(Hir.Expr.Id(name), fn, false); // suger syntax
+                    def method = trans(scope, f);
+                    Hir.Stmt.Var(Hir.Expr.Id(method.name), method.fn, false); // syntax suger
                 }
             };
             stmt.addSpan(ast.span)
@@ -73,6 +73,7 @@ namespace Atla.Lang.Ast
             def expr: Hir.Expr = match (ast) {
                 | Ast.Expr.Unit => Hir.Expr.Unit()
                 | Ast.Expr.Int(value) => Hir.Expr.Int(value)
+                | Ast.Expr.Double(value) => Hir.Expr.Double(value)
                 | Ast.Expr.String(value) => Hir.Expr.String(value)
                 | Ast.Expr.Block(stmts) => {
                     def block = Hir.Expr.Block(scope);
@@ -96,32 +97,60 @@ namespace Atla.Lang.Ast
             expr.addSpan(ast.span)
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.Fn): string * Hir.Expr.Fn {
-            match (ast) {
-                | Ast.Fn.Static(name, args, ret, body)
-                | Ast.Fn.Instance(name, args, ret, body) => {
-                    def fnType = TypeHint.Fn(args.Map(_.typeHint), ret);
-                    _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
-                    
-                    def fn = Hir.Expr.Fn(scope, args.Map(_.name));
-                    _ = fn.addSpan(ast.span);
-                    fn.typeHint = fnType;
-                    
-                    fn.body = trans(fn.scope, body); // 関数のスコープを作ってから本体を定義
-                    
-                    (name, fn)
+        searchTypeScopeName(scope: Hir.Scope): option[string] {
+            match (scope) {
+                | Hir.Scope.Type as t => Some(t.name)
+                | _ => match (scope.parent()) {
+                    | Some(p) => searchTypeScopeName(p)
+                    | _ => None()
                 }
             }
+        }
+        
+        public trans(scope: Hir.Scope, ast: Ast.Fn): Hir.Method {
+            def errors = List();
+            def (name, args, ret, body) = match (ast) {
+                | Ast.Fn.Static(name, args, ret, body) => (name, args, ret, body)
+                | Ast.Fn.Instance(name, args, ret, body) => {
+                    // this引数を追加する
+                    def typeName = searchTypeScopeName(scope);
+                    when (typeName.IsNone) {
+                        errors.Add(Hir.Error.Syntax("Cannot define Instance method at outside of Type"));
+                    }
+                    
+                    (name, Ast.FnArg("this", TypeHint.Name(typeName.Value)) :: args, ret, body)
+                }
+            };
+            
+            def fnType = TypeHint.Fn(args.Map(_.typeHint), ret);
+            _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
+                    
+            def fn = Hir.Expr.Fn(scope, args.Map(_.name));
+            _ = fn.addSpan(ast.span);
+            fn.typeHint = fnType;
+                    
+            fn.body = trans(fn.scope, body); // 関数のスコープを作ってから本体を定義
+                    
+            Hir.Method(name, fn)
+        }
+        
+        public trans(scope: Hir.Scope, ast: Ast.Decl.Type): Type.Define {
+            def ty = Type.Define(scope, ast.name);
+            foreach (item in ast.items) {
+                match (item) {
+                    | Ast.TypeItem.Field as p => ty.fields.Add(TypeField(p.name, trans(Some(p.typeHint))))
+                    | Ast.TypeItem.Method as m => ty.methods.Add(trans(ty.scope, m.fn))
+                }
+            }
+            
+            ty
         }
         
         public declare(mod: Hir.Module, ast: Ast.Decl): void {
             match (ast) {
                 | Ast.Decl.Import(path) => mod.import(path)
-                | Ast.Decl.StaticFn(f) => {
-                    def (name, fn) = trans(mod.scope, f);
-                    mod.addMethod(name, fn);
-                }
-                | Ast.Decl.Type()
+                | Ast.Decl.StaticFn(f) => mod.methods.Add(trans(mod.scope, f))
+                | Ast.Decl.Type as t => mod.types.Add(trans(mod.scope, t))
                 | Ast.Decl.Error => {}
             }
         }

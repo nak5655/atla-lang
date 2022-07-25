@@ -81,9 +81,16 @@ namespace Atla.Lang
         }
     }
     
-    public class Field {
+    public class TypeField {
         public name: string;
-        public type: Type;
+        public type: Type.Var;
+        public typeHint: TypeHint;
+        
+        public this(name: string, typeHint: TypeHint) {
+            this.name = name;
+            this.typeHint = typeHint;
+            this.type = Type.Var();
+        }
     }
     
     public variant Type: System.IEquatable[Type] {
@@ -116,26 +123,20 @@ namespace Atla.Lang
                 $"Var($instance)"
             }
         }
-        | Class {
+        | Define {
             public name: string;
-            public fields: List[Field];
+            public fields: List[TypeField];
             public methods: List[Hir.Method];
-            public ctors: List[Hir.Ctor];
         
-            public scope: Hir.Scope.Class;
+            public scope: Hir.Scope.Type;
         
             public this(parentScope: Hir.Scope, name: string) {
                 this.name = name;
                 fields = List();
                 methods = List();
             
-                this.scope = Hir.Scope.Class(parentScope, name);
+                this.scope = Hir.Scope.Type(parentScope, name);
             }
-            
-            //// TODO
-            //public scanErrors(): IEnumerable[(Hir.Error * Span)] {
-            //    errors.Map(e => (e, Span.zero())).Concat(methods.SelectMany(_.scanErrors()))
-            //}
         }
         | Native {
             public type: System.Type;
@@ -174,6 +175,8 @@ namespace Atla.Lang
         public static UNIT_NAME: string = "Unit";
         public static BOOL_NAME: string = "Bool";
         public static INT_NAME: string = "Int";
+        public static FLOAT_NAME: string = "Float";
+        public static DOUBLE_NAME: string = "Double";
         public static STRING_NAME: string = "String";
         
         mutable _systemType: System.Type; // キャッシュ
@@ -196,6 +199,7 @@ namespace Atla.Lang
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x.canUnify(y)) && b.canUnify(d) // 各パラメーターはprunedされてないので注意
                 | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => a.canUnify(c) && bs.Zip(ds).All((b,d) => b.canUnify(d)) // 各パラメーターはprunedされてないので注意
                 | (Native(a), Native(b)) when a.Equals(b) => true // TODO ネイティブの継承を考慮する
+                | (Define as a, Define as b) => a.Equals(b)
                 // TODO
                 | _ => false
             }
@@ -221,7 +225,11 @@ namespace Atla.Lang
                     it.simplify()
                 }
                 | (_, it is Var) => {
-                    it.instance = it.instance.unify(this); // thisが型変数じゃないのでotherをunifyして返す
+                    if (!it.occursIn(this)) {
+                        it.instance = it.instance.unify(this); // thisが型変数じゃないのでotherをunifyして返す
+                    } else {
+                        it.instance = Type.Error(TypeError.RecursiveReference(other, this));
+                    }
                     it.simplify()
                 }
                 | (OneOf(ts) as it, _) => {
@@ -235,6 +243,7 @@ namespace Atla.Lang
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.unify(y)), b.unify(d))
                 | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => Generics(a.unify(c), bs.Zip(ds).Map((b,d) => b.unify(d)))
                 | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
+                | (Define as a, Define as b) when a.Equals(b) => this
                 // TODO
                 | _ => {
                     Type.Error(TypeError.UnificationFailure(this, other))
@@ -273,20 +282,22 @@ namespace Atla.Lang
             
             match (other) {
                 | Var(t) => occursIn(t)
+                | OneOf(ts) => ts.Any(t => occursIn(t))
                 | Fn(args, ret) => args.Any(arg => occursIn(arg)) || occursIn(ret)
                 | Generics(b, ps) => occursIn(b) || ps.Any(p => occursIn(p))
                 | _ => false
             }
         }
         
-        public scanErrors(): IEnumerable[TypeError] {
+        public scanErrors(defaultSpan: Span): IEnumerable[Hir.Error * Span] {
             def ret = match (this) {
-                | Var(t) => t.scanErrors()
-                | Fn(args, ret) => args.SelectMany(_.scanErrors()).Concat(ret.scanErrors())
-                | Generics(b, ps) => ps.SelectMany(_.scanErrors()).Concat(b.scanErrors())
+                | Var(t) => t.scanErrors(defaultSpan)
+                | Fn(args, ret) => args.SelectMany(_.scanErrors(defaultSpan)).Concat(ret.scanErrors(defaultSpan))
+                | Generics(b, ps) => ps.SelectMany(_.scanErrors(defaultSpan)).Concat(b.scanErrors(defaultSpan))
+                | Define => [] // ここで型定義の内容をスキャンすると無限ループするのでここでエラーチェックはしない（Hirのツリーでスキャンされるので問題ない）
                 | _ => []
             };
-            ret.Concat(errors)
+            ret.Concat(errors.Map(e => (Hir.Error.Type(e), defaultSpan)))
         }
         
         public ToSystemType(): System.Type {
@@ -343,7 +354,7 @@ namespace Atla.Lang
             match (this) {
                 | Unknown => (this: object).GetHashCode()
                 | Var(t) => t.GetHashCode()
-                | Class => (this: object).GetHashCode()
+                | Define => (this: object).GetHashCode()
                 | Native(t) => t.GetHashCode()
                 | Fn(args, ret) => args.Sum(_.GetHashCode()) + ret.GetHashCode()
                 | Generics(b, ps) => ps.Sum(_.GetHashCode()) + b.GetHashCode()
@@ -355,12 +366,12 @@ namespace Atla.Lang
             match (this, other) {
                 | (Var(t), _) => t.Equals(other)
                 | (_, Var(s)) => this.Equals(s)
-                | (Unknown, _) => (this: object).Equals(other)
-                | (Class, _) => (this: object).Equals(other)
+                | (Unknown, _) => Object.Equals(this, other)
+                | (Define, _) => Object.Equals(this, other)
                 | (Native(t), Native(s)) => t.Equals(s)
                 | (Fn(xs, y), Fn(ts, s)) when xs.Length == ts.Length => xs.Zip(ts).All((x, t) => x.Equals(t)) && y.Equals(s)
                 | (Generics(x, ys), Generics(t, ss)) when ys.Length == ss.Length => ys.Zip(ss).All((x, t) => x.Equals(t)) && x.Equals(t)
-                | (Error, _) => (this: object).Equals(other)
+                | (Error, _) => Object.Equals(this, other)
                 | _ => false
             }
         }

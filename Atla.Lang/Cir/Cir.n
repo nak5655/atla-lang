@@ -11,6 +11,7 @@ using System.Reflection.Emit;
 
 using Atla.Lang;
 
+// TODO rename to MSIL ?
 namespace Atla.Lang.Cir
 {
     public class Label {

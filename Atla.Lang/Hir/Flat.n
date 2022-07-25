@@ -18,14 +18,14 @@ namespace Atla.Lang.Hir
             $"closure`$_seqId"
         }
         
-        replaceFn(scope: Hir.Scope, hir: Hir.HasExpr): IEnumerable[Type.Class] {
-            mutable ret: List[Type.Class] = List();
+        replaceFn(scope: Hir.Scope, hir: Hir.HasExpr): IEnumerable[Type.Define] {
+            mutable ret: List[Type.Define] = List();
             hir.replaceExpr(scope, (s, e) => match (e) {
                 | Hir.Expr.Fn as f => {
                     // bodyはすでに置換済みなので注意（Bottom-Upなので）
                     
                     // クロージャーを表すクラスを作成
-                    def fClass = Type.Class(scope.globalScope(), getUniqueName());
+                    def fClass = Type.Define(scope.globalScope(), getUniqueName());
                     
                      // コンストラクタ作成
                     def fClassCtor = Hir.Expr.Fn(fClass.scope, []);
@@ -72,16 +72,16 @@ namespace Atla.Lang.Hir
             ret
         }
         
-        public flat(hir: Hir.Method): IEnumerable[Type.Class] {
+        public flat(hir: Hir.Method): IEnumerable[Type.Define] {
             replaceFn(hir.fn.scope, hir.fn.body)
         }
         
         public flat(hir: Hir.Module): void {
-            mutable newClasses: IEnumerable[Type.Class] = [];
+            mutable newTypes: IEnumerable[Type.Define] = [];
             foreach (method in hir.methods) {
-                newClasses = newClasses.Concat(flat(method));
+                newTypes = newTypes.Concat(flat(method));
             }
-            hir.classes.AddRange(newClasses);
+            hir.types.AddRange(newTypes);
         }
         
         public flat(hir: Hir.Assembly): void {

@@ -68,7 +68,7 @@ namespace Test.HirTest
                 ]))
             ]);
             mainFn.body = mainFnBody;
-            mod.addMethod("main", mainFn);
+            mod.methods.Add(Hir.Method("main", mainFn));
             Typing().typing(mod);
             
             def fnType = mainFn.type.pruned() :> Type.Fn;

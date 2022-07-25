@@ -48,6 +48,7 @@ namespace Atla.Lang.Hir
                 value.GetHashCode()
             }
         }
+        | Syntax { message: string }
     }
     
     public variant Pattern: HasSpan[Pattern] {
@@ -158,6 +159,13 @@ namespace Atla.Lang.Hir
             
             public override ToString(): string {
                 $"Int($value)"
+            }
+        }
+        | Double {
+            public value: double;
+            
+            public override ToString(): string {
+                $"Double($value)"
             }
         }
         | String {
@@ -271,7 +279,7 @@ namespace Atla.Lang.Hir
         // 自分自身も置換する
         public replaceAll(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): Hir.Expr {
             match (this) {
-                | Unit | Bool | Int | String | Id | StaticMember => {}
+                | Unit | Bool | Int | Double | String | Id | StaticMember => {}
                 | Block as e => e.stmts.ForEach(_.replaceExpr(e.scope, f))
                 | Switch as e => foreach (e in e.entries) { e.replaceExpr(e.bodyScope, f) }
                 | Match as e => foreach (e in e.entries) { e.replaceExpr(e.bodyScope, f) }
@@ -287,11 +295,9 @@ namespace Atla.Lang.Hir
         
         // TODO Type.Varのエラーが重複する
         public scanErrors(): IEnumerable[(Error * Span)] {
+            System.Diagnostics.Debug.WriteLine(this);
             def es = match (this) {
-                | Unit => []
-                | Bool => []
-                | Int => []
-                | String => []
+                | Unit | Bool | Int | Double | String => []
                 | Block(_, ss) => ss.SelectMany(_.scanErrors())
                 | it is Fn => it.body.scanErrors()
                 | Id => []
@@ -301,7 +307,7 @@ namespace Atla.Lang.Hir
                 | Switch(es) => es.SelectMany(_.scanErrors())
                 | Match(_, e, es) => e.scanErrors().Concat(es.SelectMany(_.scanErrors()))
             }
-            errors.Map(e => (e, span)).Concat(es).Concat(type.scanErrors().Select(e => (Error.Type(e), span)))
+            errors.Map(e => (e, span)).Concat(es).Concat(type.scanErrors(span))
         }
     }
     
@@ -329,12 +335,6 @@ namespace Atla.Lang.Hir
         | Private
     }
     
-    // TODO Method.Ctor ?
-    public class Ctor {
-        public args: list[FnArg];
-        public body: Expr;
-    }
-    
     public class Method {
         public name: string;
         public fn: Expr.Fn;
@@ -348,6 +348,10 @@ namespace Atla.Lang.Hir
             this.hidden = false;
         }
         
+        public isCtor(): bool {
+            name == "this" // thisならConstructor
+        }
+        
         public scanErrors(): IEnumerable[(Error * Span)] {
             fn.scanErrors()
         }
@@ -357,7 +361,7 @@ namespace Atla.Lang.Hir
         public name: string; // TODO scope.nameを返す
         public imports: List[Import];
         public mutable methods: List[Method];
-        public mutable classes: List[Type.Class];
+        public mutable types: List[Type.Define];
         
         public scope: Scope.Module;
         
@@ -365,6 +369,7 @@ namespace Atla.Lang.Hir
             this.name = name;
             imports = List();
             methods = List();
+            types = List();
             
             this.scope = Scope.Module(parentScope, name);
         }
@@ -372,10 +377,6 @@ namespace Atla.Lang.Hir
         public import(path: list[string]): void {
             imports.Add(Import(path))
             // TODO edit scope
-        }
-        
-        public addMethod(name: string, fn: Expr.Fn): void {
-            methods.Add(Method(name, fn));
         }
         
         public errors: List[Error] = List();
