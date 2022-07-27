@@ -41,6 +41,17 @@ namespace Test.MirTest
         }
         
         [Test]
+        public MirGeometryTest(): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
+            
+            def code = Misc.readCase("geometry.atla");
+            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def mir = Atla.Lang.Misc.compile(asm).modules["main"];
+            
+            Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
+        }
+        
+        [Test]
         public MirCountUpTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
             

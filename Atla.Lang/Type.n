@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Reflection;
+using System.Reflection.Emit;
 
 using Atla.Lang.Parse;
 using Atla.Lang;
@@ -82,8 +83,11 @@ namespace Atla.Lang
     
     public class TypeField {
         public name: string;
+        mutable symbolCache: option[Symbol];
         public type: Type.Var;
         public typeHint: TypeHint;
+        
+        public mutable info: FieldInfo;
         
         public this(name: string, typeHint: TypeHint) {
             this.name = name;
@@ -94,6 +98,15 @@ namespace Atla.Lang
         public scanErrors(defaultSpan: Span): IEnumerable[Hir.Error * Span] {
             type.scanErrors(defaultSpan)
         }
+        
+        public setSymbol(symbol: Symbol): void {
+            symbolCache = Some(symbol);
+        }
+        
+        public getSymbol(): option[Symbol] {
+            symbolCache
+        }
+        
     }
     
     public variant Type: System.IEquatable[Type] {
@@ -132,6 +145,8 @@ namespace Atla.Lang
             public methods: List[Hir.Method];
         
             public scope: Hir.Scope.Type;
+            
+            public mutable info: option[TypeInfo];
         
             public this(parentScope: Hir.Scope, name: string) {
                 this.name = name;
@@ -139,6 +154,8 @@ namespace Atla.Lang
                 methods = List();
             
                 this.scope = Hir.Scope.Type(parentScope, name);
+                
+                this.info = None();
             }
             
             public scanMyErrors(defaultSpan: Span): IEnumerable[Hir.Error * Span] {
@@ -317,6 +334,7 @@ namespace Atla.Lang
                 _systemType = match (this.pruned()) {
                     // TODO
                     | Native(t) => t
+                    | Define as t => t.info.Value // TODO Noneの時は Result.Failure で返したい
                     | Generics(b, ps) => {
                         def _base = b.ToSystemType();
                         if (_base.IsGenericTypeDefinition)
@@ -391,7 +409,10 @@ namespace Atla.Lang
         }
         
         public isVoid(): bool {
-            this.ToSystemType() == typeof(void)
+            match (this.pruned()) {
+                | Native(v) => v == typeof(void)
+                | _ => false
+            }
         }
     }
 }

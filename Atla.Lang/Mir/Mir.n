@@ -21,12 +21,14 @@ namespace Atla.Lang.Mir
     public variant Imm {
         | Bool { value: bool }
         | Int { value: int }
+        | Double { value: double }
         | String { value: string }
         
         public override ToString(): string {
             match (this) {
                 | Bool(v) => $"Bool($v)"
                 | Int(v) => $"Int($v)"
+                | Double(v) => $"Double($v)"
                 | String(v) => $"String($v)"
             }
         }
@@ -35,11 +37,13 @@ namespace Atla.Lang.Mir
     public variant Value {
         | Imm { value: Mir.Imm }
         | Sym { value: Symbol }
+        | Field { inst: Symbol; field: FieldInfo }
         
         public override ToString(): string {
             match (this) {
                 | Imm(v) => $"Imm($v)"
                 | Sym(v) => $"Sym($v)"
+                | Field(sym, fi) => $"Field($sym, $fi)"
             }
         }
     }
@@ -70,14 +74,31 @@ namespace Atla.Lang.Mir
                 $"$name = $value"
             }
         }
-        | TAC {
+        | AssignField {
+            inst: Symbol;
+            field: FieldInfo;
+            value: Value;
+            
+            public override ToString(): string {
+                $"$inst.field = $value"
+            }
+        }
+        | TAC { // three addess code
             dest: Symbol; lhs: Value; op: OpCode; rhs: Value;
         
             public override ToString(): string {
                 $"$dest = $lhs $op $rhs"
             }
-        } // three addess code
+        }
         | Call {
+            method: MethodInfo;
+            args: list[Value];
+            
+            public override ToString(): string {
+                $"$method($(args.joinToString(\", \")))"
+            }
+        }
+        | CallStatic {
             method: MethodInfo;
             args: list[Value];
             
@@ -92,6 +113,15 @@ namespace Atla.Lang.Mir
             
             public override ToString(): string {
                 $"$dst = $method($(args.joinToString(\", \")))"
+            }
+        }
+        | Construct { // Constructor
+            dst: Symbol;
+            ctor: ConstructorInfo;
+            args: list[Value];
+            
+            public override ToString(): string {
+                $"$dst = $ctor($(args.joinToString(\", \")))"
             }
         }
         | Ret
@@ -126,6 +156,24 @@ namespace Atla.Lang.Mir
         }
     }
     
+    public class Field {
+        public name: string;
+        public builder: FieldBuilder;
+        
+        public this(ty: Type, name: string, type: System.Type) {
+            this.name = name;
+            this.builder = ty.builder.DefineField(name, type, FieldAttributes.Public);
+        }
+    }
+    
+    public class Constructor {
+        public builder: ConstructorBuilder;
+        
+        public this(builder: ConstructorBuilder) {
+            this.builder = builder;
+        }
+    }
+    
     public class Method {
         public name: string;
         public builder: MethodBuilder; // subclass of MethodInfo
@@ -135,7 +183,7 @@ namespace Atla.Lang.Mir
         
         public this(ty: Type, name: string, args: list[System.Type], ret: System.Type) {
             this.name = name;
-            builder = ty.builder.DefineMethod(name, MethodAttributes.Public, ret, args.ToArray());
+            builder = ty.builder.DefineMethod(name, MethodAttributes.Public | MethodAttributes.Static, ret, args.ToArray());
         }
         
         public this(mod: Module, name: string, args: list[System.Type], ret: System.Type) {
@@ -151,11 +199,28 @@ namespace Atla.Lang.Mir
     public class Type: MethodContainer {
         public builder: TypeBuilder;
         
+        public fields: List[Field];
+        public ctors: List[Constructor];
         public methods: List[Method];
         
         public this(mod: Module, name: string) {
             this.builder = mod.builder.DefineType(name, TypeAttributes.Public, typeof(System.Object));
+            this.fields = List();
+            this.ctors = List();
             this.methods = List();
+        }
+        
+        public defineField(name: string, ret: System.Type): Field {
+            def field = Field(this, name, ret);
+            fields.Add(field);
+            field
+        }
+        
+        public defineConstructor(args: IEnumerable[System.Type]): Constructor {
+            def ctorBuilder = builder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, args.ToArray());
+            def ctor = Constructor(ctorBuilder);
+            ctors.Add(ctor);
+            ctor
         }
         
         public defineMethod(name: string, args: list[System.Type], ret: System.Type): Method {

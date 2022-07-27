@@ -59,7 +59,7 @@ namespace Atla.Lang.Mir
                     | _ => Result.Failure($"Symbol $dst is invalid.")
                 }))
                 | Mir.Ins.Assign(sym, rhs) => load(frame, rhs).bind(vs => store(frame, sym).map(st => vs.Concat(st)))
-                | Mir.Ins.Call(mi, args) => {
+                | Mir.Ins.CallStatic(mi, args) => {
                     args.Map(a => load(frame, a)).seq().map(vs => vs.flatten().Concat([Cir.Ins.Call(mi)]))
                 }
                 | Mir.Ins.CallAssign(dst, mi, args) => {

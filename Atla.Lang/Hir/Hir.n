@@ -7,6 +7,7 @@ using Nemerle.Imperative;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
 using Atla.Lang;
 using Atla.Lang.Parse;
@@ -244,7 +245,7 @@ namespace Atla.Lang.Hir
         }
         | Member {
             public mutable expr: Expr;
-            public name: string;
+            public name: string; // TODO Idに変更(フィールドやメソッドを一意に識別したい)
             
             public override ToString(): string {
                 $"Member($expr, $name)"
@@ -341,11 +342,15 @@ namespace Atla.Lang.Hir
         public accessQualifier: AccessQualifier;
         public mutable hidden: bool; // 自動生成の関数など（MSILでHideBySigがつく）
         
+        public mutable info: option[MethodInfo];
+        
         public this(name: string, fn: Expr.Fn) {
             this.name = name;
             this.fn = fn;
             this.accessQualifier = AccessQualifier.Public;
             this.hidden = false;
+            
+            this.info = None();
         }
         
         public isCtor(): bool {

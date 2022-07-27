@@ -52,12 +52,18 @@ namespace Atla.Lang.Hir
         public declareTypes(scope: Scope, hir: Atla.Lang.Type.Define): void {
             scope.declareType(hir.name, hir);
             
-            // デフォルトコンストラクタ
+            // コンストラクタ
             _ = scope.declareLocal(hir.name, Type.Fn(hir.fields.Map(_.type), hir));
             
             // フィールド
             foreach (field in hir.fields) {
-                _ = hir.scope.declareLocal(field.name, field.type);
+                def sym = hir.scope.declareLocal(field.name, field.type);
+                field.setSymbol(sym);
+            }
+            
+            // メソッド
+            foreach (method in hir.methods) {
+                _ = hir.scope.declareLocal(method.name, method.fn.type);
             }
         }
         

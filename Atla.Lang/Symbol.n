@@ -18,7 +18,9 @@ namespace Atla.Lang
     public variant SymbolKind {
         | Local
         | Arg
+        | Field { fieldInfo: FieldInfo } // this.fieldみたいなメンバーアクセスじゃなくて、fieldみたいにthisが省略されてるときのシンボル (メンバーアクセスはシンボルを持たない & フィールドは関数フレームに存在しないので特別扱い)
         | Method { methodInfo: MethodInfo } // ラムダ式はHirではLocal|Argで、MirにするときにMethodに変換する
+        | Constructor { constructorInfo: ConstructorInfo } // MethodInfoを継承していないので別で扱う
         | InlineMethod { proc: Proc }
     }
     
