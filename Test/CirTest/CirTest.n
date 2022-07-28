@@ -41,6 +41,19 @@ namespace Test.CirTest
             Atla.Lang.Cir.Emit().emit(cir);
         }
         
+        [Test]
+        public CirGeometryTest(): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Geometry.exe"));
+            
+            def code = Misc.readCase("geometry.atla");
+            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
+            
+            def mir = Atla.Lang.Misc.compile(asm);
+            def cir = Atla.Lang.Misc.compile(mir);
+            
+            Atla.Lang.Cir.Emit().emit(cir);
+        }
+        
         //[Test]
         //public symbolEqualityTest(): void {
         //    def a = Symbol.Method("aaa", [typeof(System.String)], typeof(void));

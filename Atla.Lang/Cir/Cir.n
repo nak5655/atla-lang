@@ -35,8 +35,11 @@ namespace Atla.Lang.Cir
         | StLoc { index: int }
         | LdArg { index: int }
         | StArg { index: int }
-        | LdInt32 { value: int }
+        | LdI32 { value: int }
+        | LdF64 { value: double }
         | LdStr { str: string }
+        | StFld { fieldInfo: FieldInfo }
+        | LdFld { fieldInfo: FieldInfo }
         | Add
         | Sub
         | Mul
@@ -44,7 +47,8 @@ namespace Atla.Lang.Cir
         | Or
         | And
         | Eq
-        | Call { method: MethodInfo }
+        | Call { method: Either[MethodInfo, ConstructorInfo] }
+        | NewObj { ctor: ConstructorInfo }
         | Ret
         | Nop
         | MarkLabel { label: Label }
@@ -60,8 +64,16 @@ namespace Atla.Lang.Cir
     }
     
     [Record]
+    public class Constructor {
+        public builder: ConstructorBuilder; // subtype of ConstructorInfo
+        public frame: Frame;
+        public body: list[Ins];
+    }
+    
+    [Record]
     public class Type {
         public builder: TypeBuilder;
+        public ctors: list[Constructor];
         public methods: list[Method];
     }
     

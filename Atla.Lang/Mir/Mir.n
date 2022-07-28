@@ -91,15 +91,7 @@ namespace Atla.Lang.Mir
             }
         }
         | Call {
-            method: MethodInfo;
-            args: list[Value];
-            
-            public override ToString(): string {
-                $"$method($(args.joinToString(\", \")))"
-            }
-        }
-        | CallStatic {
-            method: MethodInfo;
+            method: Either[MethodInfo, ConstructorInfo];
             args: list[Value];
             
             public override ToString(): string {
@@ -115,7 +107,7 @@ namespace Atla.Lang.Mir
                 $"$dst = $method($(args.joinToString(\", \")))"
             }
         }
-        | Construct { // Constructor
+        | New { // Constructor
             dst: Symbol;
             ctor: ConstructorInfo;
             args: list[Value];
@@ -168,6 +160,8 @@ namespace Atla.Lang.Mir
     
     public class Constructor {
         public builder: ConstructorBuilder;
+        public mutable body: list[Ins];
+        public frame: Frame = Frame();
         
         public this(builder: ConstructorBuilder) {
             this.builder = builder;

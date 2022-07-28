@@ -44,7 +44,7 @@ namespace Atla.Lang.Cir
                     }
                 }
                 | Cir.Ins.StArg(index) => gen.Emit(OpCodes.Starg, index)
-                | Cir.Ins.LdInt32(value) => match (value) {
+                | Cir.Ins.LdI32(value) => match (value) {
                     | 0 => gen.Emit(OpCodes.Ldc_I4_0)
                     | 1 => gen.Emit(OpCodes.Ldc_I4_1)
                     | 2 => gen.Emit(OpCodes.Ldc_I4_2)
@@ -56,7 +56,10 @@ namespace Atla.Lang.Cir
                     | 8 => gen.Emit(OpCodes.Ldc_I4_8)
                     | _ => gen.Emit(OpCodes.Ldc_I4, value)
                 }
+                | Cir.Ins.LdF64(value) => gen.Emit(OpCodes.Ldc_R8, value)
                 | Cir.Ins.LdStr(str) => gen.Emit(OpCodes.Ldstr, str)
+                | Cir.Ins.LdFld(field) => gen.Emit(OpCodes.Ldfld, field)
+                | Cir.Ins.StFld(field) => gen.Emit(OpCodes.Stfld, field)
                 | Cir.Ins.Add => gen.Emit(OpCodes.Add)
                 | Cir.Ins.Sub => gen.Emit(OpCodes.Sub)
                 | Cir.Ins.Mul => gen.Emit(OpCodes.Mul)
@@ -64,7 +67,9 @@ namespace Atla.Lang.Cir
                 | Cir.Ins.Or  => gen.Emit(OpCodes.Or)
                 | Cir.Ins.And => gen.Emit(OpCodes.And)
                 | Cir.Ins.Eq  => gen.Emit(OpCodes.Ceq)
-                | Cir.Ins.Call(method) => gen.Emit(OpCodes.Call, method)
+                | Cir.Ins.Call(Either.Left(method)) => gen.Emit(OpCodes.Call, method)
+                | Cir.Ins.Call(Either.Right(ctor)) => gen.Emit(OpCodes.Call, ctor)
+                | Cir.Ins.NewObj(ctor) => gen.Emit(OpCodes.Newobj, ctor)
                 | Cir.Ins.Ret => gen.Emit(OpCodes.Ret)
                 | Cir.Ins.Nop => gen.Emit(OpCodes.Nop)
                 | Cir.Ins.MarkLabel(label) => gen.MarkLabel(label.get(gen))
@@ -73,6 +78,18 @@ namespace Atla.Lang.Cir
             }
         }
         
+        public emit(cir: Cir.Constructor): void {
+            def gen = cir.builder.GetILGenerator();
+            
+            foreach (sym in cir.frame.locs) {
+                def loc = gen.DeclareLocal(sym.type.ToSystemType());
+                //loc.SetLocalSymInfo(sym.name);
+            }
+            
+            foreach (ins in cir.body) {
+                emit(gen, ins);
+            }
+        }
         
         public emit(cir: Cir.Method): void {
             def gen = cir.builder.GetILGenerator();
@@ -88,6 +105,10 @@ namespace Atla.Lang.Cir
         }
         
         public emit(cir: Cir.Type): void {
+            foreach (ctor in cir.ctors) {
+                emit(ctor);
+            }
+            
             foreach (method in cir.methods) {
                 emit(method);
             }

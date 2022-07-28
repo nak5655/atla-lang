@@ -267,7 +267,7 @@ namespace Atla.Lang.Hir
                             }
                             if (m.ReturnType == typeof(void)) {
                                 // 返り値がvoidのとき
-                                Result.Success(KNormal(procArgs.Concat([Mir.Ins.CallStatic(m, resArgs)]), None()))
+                                Result.Success(KNormal(procArgs.Concat([Mir.Ins.Call(Either.Left(m), resArgs)]), None()))
                             } else {
                                 def tmp = frame.declareTemp(m.ReturnType);
                             
@@ -292,7 +292,7 @@ namespace Atla.Lang.Hir
                                 | Atla.Lang.Type.Fn(_, ret) => {
                                     def tmp = frame.declareTemp(ret);
                             
-                                    Result.Success(KNormal(procArgs.Concat([Mir.Ins.Construct(tmp, ci, resArgs)]), Some(Mir.Value.Sym(tmp))))
+                                    Result.Success(KNormal(procArgs.Concat([Mir.Ins.New(tmp, ci, resArgs)]), Some(Mir.Value.Sym(tmp))))
                                 }
                                 | _ => Result.Failure($"$fn must be a function.")
                             }
@@ -407,7 +407,7 @@ namespace Atla.Lang.Hir
         
         public implType(mir: Mir.Type, tyDef: Atla.Lang.Type.Define): option[string] {
             // コンストラクタ
-            addConstructor(tyDef.scope.parent, mir, tyDef); // 型が宣言されているスコープと同じスコープで宣言
+            def ctor = addConstructor(tyDef.scope.parent, mir, tyDef); // 型が宣言されているスコープと同じスコープで宣言
             
             // 先にメソッドを定義
             def methods: List[Hir.Method * Mir.Method] = List();
@@ -433,9 +433,12 @@ namespace Atla.Lang.Hir
                 }
             }
             
+            // フィールド(FieldInfo)が定義されてからコンストラクタの実装を追加
+            implConstructor(tyDef, ctor);
+            
             // メソッドを実装
             foreach ((hm, mm) in methods) {
-                match (implMethod(mir, hm, mm)) {
+                match (implMethod(hm, mm)) {
                     | Some(e) => return Some(e)
                     | _ => {}
                 }
@@ -455,9 +458,8 @@ namespace Atla.Lang.Hir
             ty
         }
         
-        public addConstructor(scope: Hir.Scope, ty: Mir.Type, tyDef: Atla.Lang.Type.Define): void {
+        public addConstructor(scope: Hir.Scope, ty: Mir.Type, tyDef: Atla.Lang.Type.Define): Mir.Constructor {
             def ctor = ty.defineConstructor(tyDef.fields.Map(fi => fi.type.ToSystemType()).ToArray());
-            // TODO body
             
             // コンストラクタのSymbolKindを更新
             def syms = scope.resolveVar(tyDef.name, Type.Unknown());
@@ -467,6 +469,33 @@ namespace Atla.Lang.Hir
                     | _ => {}
                 }
             }
+            
+            ctor
+        }
+        
+        public implConstructor(tyDef: Atla.Lang.Type.Define, mir: Mir.Constructor): void {
+            def inst = Symbol("this", tyDef, SymbolKind.Arg(), tyDef.scope.depth + 1);
+            mir.frame.declareArg(inst);
+            
+            def proc = List();
+            
+            // インスタンス初期化(System.Object決め打ち)
+            def objCtor = typeof(object).GetConstructor(Array.Empty());
+            proc.AddRange([Mir.Ins.Call(Either.Right(objCtor), [Mir.Value.Sym(mir.frame.args.First())])]);
+            
+            foreach (field in tyDef.fields) {
+                def arg = Symbol(field.name, field.type, SymbolKind.Arg(), tyDef.scope.depth + 1);
+                
+                // フィールドに渡される引数を追加
+                mir.frame.declareArg(arg);
+                
+                // 代入命令を追加
+                proc.AddRange([Mir.Ins.AssignField(inst, field.info, Mir.Value.Sym(arg))]);
+            }
+            
+            proc.Add(Mir.Ins.Ret());
+            
+            mir.body = proc.ToNList();
         }
         
         public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Method): Result[Mir.Method] {
@@ -496,7 +525,7 @@ namespace Atla.Lang.Hir
             Result.Success(method)
         }
         
-        public implMethod(mc: Mir.MethodContainer, hir: Hir.Method, mir: Mir.Method): option[string] {
+        public implMethod(hir: Hir.Method, mir: Mir.Method): option[string] {
             match (trans(mir.frame, hir.fn.scope, hir.fn.body)) {
                 | Result.Success(KNormal(proc, res)) => mir.body = match (res) {
                     | Some(r) => proc.Concat([Mir.Ins.RetValue(r)]).ToList().ToNList();
@@ -525,7 +554,7 @@ namespace Atla.Lang.Hir
                 match (r) {
                     | Result.Failure(e) => return Result.Failure(e);
                     | Result.Success(method) => {
-                        match (implMethod(mod, m, method)) {
+                        match (implMethod(m, method)) {
                             | Some(e) => return Result.Failure(e);
                             | _ => {}
                         }
