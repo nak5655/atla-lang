@@ -1,0 +1,51 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang
+{
+    public enum Severity {
+        | Error
+        | Warning
+        | Info
+    }
+    
+    [Record]
+    public class TokenizeProblem {
+        public severity: Severity;
+        public message: string;
+        public failAt: Atla.Lang.Parse.Input[Atla.Lang.Parser.SourceChar];
+        
+        override public ToString(): string {
+            $"$severity at $failAt : $message"
+        }
+    }
+    
+    [Record]
+    public class ParseProblem {
+        public severity: Severity;
+        public message: string;
+        public failAt: Atla.Lang.Parse.Input[Atla.Lang.Parser.Token];
+        
+        override public ToString(): string {
+            $"$severity at $failAt : $message"
+        }
+    }
+    
+    [Record]
+    public class AnalyzeProblem {
+        public severity: Severity;
+        public message: string;
+        public span: Atla.Lang.Parse.Span;
+        
+        override public ToString(): string {
+            $"$severity at $span : $message"
+        }
+    }
+    
+}

@@ -31,7 +31,7 @@ namespace Test.HirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
             
             def code = "import System::Array\nimport System::Console\n\nfn main (args: Array String): Unit = Console::WriteLine \"hello\"";
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
             
             def errors = thir.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
@@ -42,7 +42,7 @@ namespace Test.HirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
             
             def code = "fn f (a: Int): String = a";
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
             
             def errors = thir.scanErrors().Distinct().ToList();
             Assert.AreEqual(1, errors.Count());
@@ -90,7 +90,7 @@ namespace Test.HirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
             
             def code = Misc.readCase("fibonacci.atla");
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
             
             def errors = thir.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
@@ -101,7 +101,7 @@ namespace Test.HirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
             
             def code = Misc.readCase("countup.atla");
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
             
             def errors = thir.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
@@ -112,7 +112,7 @@ namespace Test.HirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
             
             def code = Misc.readCase("geometry.atla");
-            def thir = Atla.Lang.Misc.updateModule(asm, "main", code);
+            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
             
             def errors = thir.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());

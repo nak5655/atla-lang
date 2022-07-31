@@ -19,9 +19,9 @@ namespace Test.CirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Hello.exe"));
             
             def code = Misc.readCase("hello.atla");
-            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
+            _ = Misc.compiler.updateModule(asm, "main", code);
             
-            def cir = Atla.Lang.Misc.compile(Atla.Lang.Misc.compile(asm));
+            def cir = Misc.compiler.compile(Misc.compiler.compile(asm));
             
             Assert.AreEqual(1, cir.modules.First().methods.Count());
             
@@ -33,10 +33,10 @@ namespace Test.CirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Fibonacci.exe"));
             
             def code = Misc.readCase("fibonacci.atla");
-            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
+            _ = Misc.compiler.updateModule(asm, "main", code);
             
-            def mir = Atla.Lang.Misc.compile(asm);
-            def cir = Atla.Lang.Misc.compile(mir);
+            def mir = Misc.compiler.compile(asm);
+            def cir = Misc.compiler.compile(mir);
             
             Atla.Lang.Cir.Emit().emit(cir);
         }
@@ -46,10 +46,10 @@ namespace Test.CirTest
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Geometry.exe"));
             
             def code = Misc.readCase("geometry.atla");
-            _ = Atla.Lang.Misc.updateModule(asm, "main", code);
+            _ = Misc.compiler.updateModule(asm, "main", code);
             
-            def mir = Atla.Lang.Misc.compile(asm);
-            def cir = Atla.Lang.Misc.compile(mir);
+            def mir = Misc.compiler.compile(asm);
+            def cir = Misc.compiler.compile(mir);
             
             Atla.Lang.Cir.Emit().emit(cir);
         }

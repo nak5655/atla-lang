@@ -1,0 +1,81 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+using Nemerle.Imperative;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang
+{
+    public interface CompileProblemHander {
+        handleTokenizeProblem(problem: TokenizeProblem): void;
+        handleParseProblem(problem: ParseProblem): void;
+        handleAnalyzeProblem(problem: AnalyzeProblem): void;
+    }
+    
+    public class Compiler
+    {
+        public mutable errorHandler: CompileProblemHander;
+        
+        public this(errorHandler: CompileProblemHander) {
+            this.errorHandler = errorHandler;
+        }
+        
+        public updateModule(asm: Hir.Assembly, name: string, code: string): option[Hir.Module] {
+            def lexer = Atla.Lang.Parser.Lexer();
+            match (lexer.tokenize(code)) {
+                | Atla.Lang.Parse.Result.Success(tokens, _) => {        
+                    def parser = Atla.Lang.Parser.Parser();
+                    match (parser.mod.parse(Atla.Lang.Parser.TokenInput(tokens, 0))) {
+                        | Atla.Lang.Parse.Result.Success(ast, _) => { 
+                            def hir = Atla.Lang.Ast.Trans().trans(asm.scope, ast, name);
+                            
+                            def transProblems = hir.scanErrors();
+                            when (transProblems.Count() > 0) {
+                                foreach ((error, span) in transProblems) {
+                                    errorHandler.handleAnalyzeProblem(AnalyzeProblem(Severity.Error, error.ToString(), span))
+                                }
+                                return None();
+                            }
+                            
+                            Atla.Lang.Hir.Typing().typing(hir);
+                            def typingProblems = hir.scanErrors();
+                            when (typingProblems.Count() > 0) {
+                                foreach ((error, span) in typingProblems) {
+                                    errorHandler.handleAnalyzeProblem(AnalyzeProblem(Severity.Error, error.ToString(), span))
+                                }
+                                return None();
+                            }
+            
+                            asm.modules[name] = hir;
+            
+                            Some(hir)
+                        }
+                        | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
+                            errorHandler.handleParseProblem(ParseProblem(Severity.Error, reason, failAt));
+                            None()
+                        }
+                    }
+                }
+                | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
+                    errorHandler.handleTokenizeProblem(TokenizeProblem(Severity.Error, reason, failAt));
+                    None()
+                }
+            }
+        }
+        
+        public compile(asm: Hir.Assembly): Mir.Assembly {
+            Atla.Lang.Hir.Flat().flat(asm);
+            def res = Atla.Lang.Hir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
+            res.getResult().Value
+        }
+        
+        public compile(asm: Mir.Assembly): Cir.Assembly {
+            def res = Atla.Lang.Mir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
+            res.getResult().Value
+        }
+    }
+}

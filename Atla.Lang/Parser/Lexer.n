@@ -2,6 +2,7 @@
 using Nemerle.Collections;
 using Nemerle.Text;
 using Nemerle.Utility;
+using Nemerle.Imperative;
 
 using System;
 using System.Collections.Generic;
@@ -264,7 +265,7 @@ namespace Atla.Lang.Parser
                 def span = Span(s.pos, s.pos.right()) + content.span;
                 Token.Comment(content.string, span)
             });
-            ws = satisfy("whitespace", c => " \n\r\t".Contains(c.char));
+            ws = char(' ')._or(char('\n')); // TODO TabやCRLFなどが来たら即失敗にしたい
             def delimS = delimSigns.Map(delimiter => {
                 // 記号のデリミタは演算子の記号が続いてはいけない(カッコなどは連続していい)
                 phrase(delimiter, delimiter.ToArray().ToNList(), (i, a) => i.char == a).notFollowedBy(satisfy("", c => opSigns.Contains(c.char))).map(s => {
@@ -313,7 +314,7 @@ namespace Atla.Lang.Parser
         }
         
         public tokenize(text: string): Result[SourceChar, list[Token]] {
-            tokens.parse(SourceInput(text.Replace("\r\n", "\n").Replace("\r", "\n"))); // 改行コードを統一する
+            tokens.parse(SourceInput(text.Replace("\r\n", "\n").Replace("\r", "\n"))); // 改行コードを統一する // TODO CRLFとCRがあったらWarningを出したい
         }
     }
 }

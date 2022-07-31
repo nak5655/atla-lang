@@ -11,12 +11,26 @@ using System.IO;
 namespace Test
 {
     public class Misc {
+        public static compiler: Atla.Lang.Compiler = Atla.Lang.Compiler(CompileProblemHanderMock());
+        
         public static readCase(fileName: string): string {
             File.ReadAllText(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"cases\\$(fileName)"))
         }
         
         public static tempFile(name: string): string {
             Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"temp\\$(name)")
+        }
+    }
+    
+    public class CompileProblemHanderMock: Atla.Lang.CompileProblemHander {
+        public handleTokenizeProblem(problem: Atla.Lang.TokenizeProblem): void {
+            throw Exception(problem.ToString());
+        }
+        public handleParseProblem(problem: Atla.Lang.ParseProblem): void {
+            throw Exception(problem.ToString());
+        }
+        public handleAnalyzeProblem(problem: Atla.Lang.AnalyzeProblem): void {
+            throw Exception(problem.ToString());
         }
     }
 }

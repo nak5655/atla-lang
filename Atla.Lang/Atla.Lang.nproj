@@ -59,6 +59,9 @@
     </MacroReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Compiler.n">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Either.n">
       <SubType>Code</SubType>
     </Compile>
@@ -75,6 +78,9 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Misc.n">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Problem.n">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Result.n">
