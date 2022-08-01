@@ -22,7 +22,8 @@ namespace Test.MirTest
             
             def code = Misc.readCase("hello.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
-            def mir = Misc.compiler.compile(asm).modules["main"];
+            def _mir = Misc.compiler.compileHirToMir(asm);
+            def mir = _mir.Value.modules["main"];
             
             Assert.AreEqual(1, mir.methods.Count());
             Assert.AreEqual(1, mir.methods.First().body.Length);
@@ -35,7 +36,8 @@ namespace Test.MirTest
             
             def code = Misc.readCase("fibonacci.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
-            def mir = Misc.compiler.compile(asm).modules["main"];
+            def _mir = Misc.compiler.compileHirToMir(asm);
+            def mir = _mir.Value.modules["main"];
             
             Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
@@ -46,7 +48,8 @@ namespace Test.MirTest
             
             def code = Misc.readCase("geometry.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
-            def mir = Misc.compiler.compile(asm).modules["main"];
+            def _mir = Misc.compiler.compileHirToMir(asm);
+            def mir = _mir.Value.modules["main"];
             
             Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
@@ -57,7 +60,8 @@ namespace Test.MirTest
             
             def code = Misc.readCase("countup.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
-            def mir = Misc.compiler.compile(asm).modules["main"];
+            def _mir = Misc.compiler.compileHirToMir(asm);
+            def mir = _mir.Value.modules["main"];
             
             Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }

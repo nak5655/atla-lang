@@ -8,20 +8,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Atla.Lang.Parse;
+
 namespace Atla.Lang
 {
-    public interface CompileProblemHander {
-        handleTokenizeProblem(problem: TokenizeProblem): void;
-        handleParseProblem(problem: ParseProblem): void;
-        handleAnalyzeProblem(problem: AnalyzeProblem): void;
-    }
-    
     public class Compiler
     {
-        public mutable errorHandler: CompileProblemHander;
+        public mutable handleProblem: Problem -> void;
         
-        public this(errorHandler: CompileProblemHander) {
-            this.errorHandler = errorHandler;
+        public this(handleProblem: Problem -> void) {
+            this.handleProblem = handleProblem;
         }
         
         public updateModule(asm: Hir.Assembly, name: string, code: string): option[Hir.Module] {
@@ -36,7 +32,7 @@ namespace Atla.Lang
                             def transProblems = hir.scanErrors();
                             when (transProblems.Count() > 0) {
                                 foreach ((error, span) in transProblems) {
-                                    errorHandler.handleAnalyzeProblem(AnalyzeProblem(Severity.Error, error.ToString(), span))
+                                    handleProblem(Problem(Severity.Error, error.ToString(), span))
                                 }
                                 return None();
                             }
@@ -45,7 +41,7 @@ namespace Atla.Lang
                             def typingProblems = hir.scanErrors();
                             when (typingProblems.Count() > 0) {
                                 foreach ((error, span) in typingProblems) {
-                                    errorHandler.handleAnalyzeProblem(AnalyzeProblem(Severity.Error, error.ToString(), span))
+                                    handleProblem(Problem(Severity.Error, error.ToString(), span))
                                 }
                                 return None();
                             }
@@ -55,27 +51,68 @@ namespace Atla.Lang
                             Some(hir)
                         }
                         | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
-                            errorHandler.handleParseProblem(ParseProblem(Severity.Error, reason, failAt));
+                            handleProblem(Problem(Severity.Error, reason, failAt.position() :> Span));
                             None()
                         }
                     }
                 }
                 | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
-                    errorHandler.handleTokenizeProblem(TokenizeProblem(Severity.Error, reason, failAt));
+                    def pos = failAt.position() :> Atla.Lang.Parse.Position;
+                    handleProblem(Problem(Severity.Error, reason, Span(pos, pos.right())));
                     None()
                 }
             }
         }
         
-        public compile(asm: Hir.Assembly): Mir.Assembly {
+        public compileHirToMir(asm: Hir.Assembly): option[Mir.Assembly] {
             Atla.Lang.Hir.Flat().flat(asm);
-            def res = Atla.Lang.Hir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
-            res.getResult().Value
+            def flatErrors = asm.scanErrors();
+            when (flatErrors.Count() > 0) {
+                foreach ((error, span) in flatErrors) {
+                    handleProblem(Problem(Severity.Error, error.ToString(), span))
+                }
+                return None();
+            }
+            
+            match (Atla.Lang.Hir.Trans().trans(asm)) {
+                | Atla.Lang.Result.Success(mir) => {
+                    Some(mir)
+                }
+                | Atla.Lang.Result.Failure(msg) => {
+                    handleProblem(Problem(Severity.Error, msg, Span.zero())); // TODO Span
+                    None()
+                }
+            }
         }
         
-        public compile(asm: Mir.Assembly): Cir.Assembly {
-            def res = Atla.Lang.Mir.Trans().trans(asm); // 失敗したときにデバッガで結果を見られるように変数に保持する
-            res.getResult().Value
+        public compileMirToCir(asm: Mir.Assembly): option[Cir.Assembly] {
+            match (Atla.Lang.Mir.Trans().trans(asm)) {
+                | Atla.Lang.Result.Success(cir) => {
+                    Some(cir)
+                }
+                | Atla.Lang.Result.Failure(msg) => {
+                    handleProblem(Problem(Severity.Error, msg, Span.zero())); // TODO Span
+                    None()
+                }
+            }
+        }
+        
+        public compile(asm: Hir.Assembly): void {
+            match (compileHirToMir(asm)) {
+                | Some(mir) => {
+                    match (compileMirToCir(mir)) {
+                        | Some(cir) => {
+                            Cir.Emit().emit(cir);
+                        }
+                        | _ => {
+                            handleProblem(Problem(Severity.Error, "Compile Error: Could not compile the MIR to CIR.", Span.zero()));
+                        }
+                    }
+                }
+                | _ => {
+                    handleProblem(Problem(Severity.Error, "Compile Error: Could not compile the HIR to MIR.", Span.zero()));
+                }
+            }
         }
     }
 }

@@ -408,5 +408,8 @@ namespace Atla.Lang.Hir
             scope = Scope.Global();
         }
         
+        public scanErrors(): IEnumerable[(Error * Span)] {
+            modules.Values.SelectMany(_.scanErrors())
+        }
     }
 }

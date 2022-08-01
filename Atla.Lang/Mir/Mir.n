@@ -251,9 +251,19 @@ namespace Atla.Lang.Mir
         public modules: Hashtable[string, Module];
         
         public this(name: string, filePath: string) {
-            this.name = AssemblyName(name);
+            try {
+                this.name = AssemblyName(name);
+            } catch {
+                | e => throw Exception($"Invalid Assembly Name: $name: $e") // TODO Resultで返したい
+            }
+            
+            def outDir = System.IO.Path.GetDirectoryName(filePath);
+            when (!System.IO.Directory.Exists(outDir)) {
+                _ = System.IO.Directory.CreateDirectory(outDir);
+            }
+            
             this.fileName = System.IO.Path.GetFileName(filePath);
-            this.builder = Thread.GetDomain().DefineDynamicAssembly(this.name, AssemblyBuilderAccess.Save, System.IO.Path.GetDirectoryName(filePath));
+            this.builder = Thread.GetDomain().DefineDynamicAssembly(this.name, AssemblyBuilderAccess.Save, outDir);
             this.modules = Hashtable();
         }
     }

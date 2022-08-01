@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Atla.Lang.Parse;
+
 namespace Atla.Lang
 {
     public enum Severity {
@@ -15,37 +17,30 @@ namespace Atla.Lang
         | Info
     }
     
-    [Record]
-    public class TokenizeProblem {
-        public severity: Severity;
-        public message: string;
-        public failAt: Atla.Lang.Parse.Input[Atla.Lang.Parser.SourceChar];
+    public class Problem {
+        mutable severity: Severity;
+        mutable file: option[string];
+        mutable span: Span;
+        mutable message: string;
+        
+        public this(severity: Atla.Lang.Severity, message: string, span: Span) {
+            this.severity = severity;
+            this.file = None();
+            this.message = message;
+            this.span = span;
+        }
         
         override public ToString(): string {
-            $"$severity at $failAt : $message"
+            def sb = System.Text.StringBuilder();
+            
+            when (file.IsSome)
+                _ = sb.Append($"$(file.Value):");
+            _ = sb.Append($"$(span.lo.line):$(span.lo.col): ");
+            _ = sb.Append($"$severity: ");
+            _ = sb.Append(message);
+            _ = sb.Append("\n");
+            
+            sb.ToString()
         }
     }
-    
-    [Record]
-    public class ParseProblem {
-        public severity: Severity;
-        public message: string;
-        public failAt: Atla.Lang.Parse.Input[Atla.Lang.Parser.Token];
-        
-        override public ToString(): string {
-            $"$severity at $failAt : $message"
-        }
-    }
-    
-    [Record]
-    public class AnalyzeProblem {
-        public severity: Severity;
-        public message: string;
-        public span: Atla.Lang.Parse.Span;
-        
-        override public ToString(): string {
-            $"$severity at $span : $message"
-        }
-    }
-    
 }
