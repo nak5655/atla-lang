@@ -68,6 +68,9 @@
     <Compile Include="Frame.n">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Hir\Analyze.n">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Hir\Flat.n">
       <SubType>Code</SubType>
     </Compile>

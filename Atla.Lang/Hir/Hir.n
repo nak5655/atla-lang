@@ -90,12 +90,11 @@ namespace Atla.Lang.Hir
     }
     
     public class SwitchEntry: HasSpan[SwitchEntry], HasExpr {
-        public bodyScope: Scope.Block;
+        public mutable bodyScope: Scope.Block;
         public mutable pred: Expr;
         public mutable body: Expr;
         
-        public this(bodyScope: Scope.Block, pred: Expr, body: Expr) {
-            this.bodyScope = bodyScope;
+        public this(pred: Expr, body: Expr) {
             this.pred = pred;
             this.body = body;
         }
@@ -111,12 +110,11 @@ namespace Atla.Lang.Hir
     }
     
     public class MatchEntry: HasSpan[MatchEntry], HasExpr {
-        public bodyScope: Scope.Block;
+        public mutable bodyScope: Scope.Block;
         public pattern: Pattern;
         public mutable body: Expr;
         
-        public this(bodyScope: Scope.Block, pattern: Pattern, body: Expr) {
-            this.bodyScope = bodyScope;
+        public this(pattern: Pattern, body: Expr) {
             this.pattern = pattern;
             this.body = body;
         }
@@ -177,12 +175,10 @@ namespace Atla.Lang.Hir
             }
         }
         | Block {
-            public scope: Scope.Block;
+            public mutable scope: Scope.Block;
             public mutable stmts: List[Stmt] = List();
             
-            public this(parentScope: Scope) {
-                this.scope = Scope.Block(parentScope, None());
-            } 
+            public this() { }
             
             public override ToString(): string {
                 def stmtsStr = stmts.joinToString(", ");
@@ -193,19 +189,22 @@ namespace Atla.Lang.Hir
             public entries: list[SwitchEntry];
         }
         | Match {
-            public scope: Scope.Block;
+            public mutable scope: Scope.Block;
             public mutable expr: Expr;
             public entries: list[MatchEntry];
+            
+            public this(expr: Expr, entries: list[MatchEntry]) {
+                this.expr = expr;
+                this.entries = entries;
+            }
         }
         | Fn {
             public args: list[FnArg];
             public mutable body: Expr;
-            public scope: Scope.Fn;
+            public mutable scope: Scope.Fn;
             
-            public this(parentScope: Scope, args: list[string]) {
-                this.args = args.Map(a => FnArg(a));
-                // TODO ブロックスコープで引数を宣言
-                this.scope = Scope.Fn(parentScope);
+            public this(args: list[string]) {
+                this.args = args.Map(a => FnArg(a))
             }
             
             public override ToString(): string {
@@ -362,21 +361,47 @@ namespace Atla.Lang.Hir
         }
     }
     
-    public class Module {
+    public abstract class HasModules {
+        public mutable scope: Scope;
+        public mutable modules: Hashtable[string, Module] = Hashtable();
+        
+        // モジュールの作成（パスの途中のモジュールも無ければ作られる）すでにあるならそれを返す
+        public updateModule(modulePath: IEnumerable[string], mod: Module): void {
+            if (modulePath.Count() == 0)
+                throw Exception("module path must not be empty.")
+            else {
+                if (modulePath.Count() == 1) {
+                    def moduleName = modulePath.First();
+                    when (modules.ContainsKey(moduleName)) {
+                        // モジュールのツリー構造を維持するために子モジュールをセットする
+                        def childModules = modules[moduleName].modules;
+                        mod.modules = childModules;
+                    }
+                    modules[moduleName] = mod;
+                } else {
+                    def nextParentName = modulePath.First();
+                    when (!modules.ContainsKey(nextParentName)) {
+                        // 途中のモジュールがないなら追加
+                        modules[nextParentName] = Hir.Module(nextParentName);
+                    }
+                    def nextParent = modules[nextParentName];
+                    nextParent.updateModule(modulePath.Skip(1), mod)
+                }
+            }
+        }
+    }
+    
+    public class Module: HasModules {
         public name: string; // TODO scope.nameを返す
         public imports: List[Import];
         public mutable methods: List[Method];
         public mutable types: List[Type.Define];
         
-        public scope: Scope.Module;
-        
-        public this(parentScope: Scope.Global, name: string) {
+        public this(name: string) {
             this.name = name;
             imports = List();
             methods = List();
             types = List();
-            
-            this.scope = Scope.Module(parentScope, name);
         }
         
         public import(path: list[string]): void {
@@ -393,19 +418,15 @@ namespace Atla.Lang.Hir
         }
     }
     
-    public class Assembly {
+    public class Assembly: HasModules {
         public name: string;
         public fileName: string;
-        public modules: Hashtable[string, Module];
-        
-        public scope: Scope.Global; // TODO Scope.Assembly? 外部アセンブリへの依存の扱いをどうするか決めてない
         
         public this(name: string, fileName: string) {
             this.name = name;
             this.fileName = fileName;
-            this.modules = Hashtable();
             
-            scope = Scope.Global();
+            scope = Scope.Global(); // TODO Scope.Assembly? 外部アセンブリへの依存の扱いをどうするか決めてない
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {

@@ -12,13 +12,13 @@ using System.Linq;
 using Atla;
 using Atla.Lang;
 
+// この時点でHir.Scopeを触らないように設計する
 // TODO Hir.from に変更(ASTがHIRの詳細に依存すべきではない)
 namespace Atla.Lang.Ast
 {
     // 脱糖
     // タイプヒントは明示された分だけ
     // スコープは作るけど操作は無し
-    // TODO 例外じゃなくてResult型で返す
     public class Trans
     {
         public trans(typeHint: option[TypeHint]): TypeHint {
@@ -26,147 +26,152 @@ namespace Atla.Lang.Ast
                 
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.Pattern): Hir.Pattern {
+        public trans(ast: Ast.Pattern): Hir.Pattern {
             match (ast) {
                 | Ast.Pattern.Any => Hir.Pattern.Any()
                 | Ast.Pattern.Int(value) => Hir.Pattern.Int(value)
             }
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.MatchEntry): Hir.MatchEntry {
+        public trans(ast: Ast.MatchEntry): Result[Hir.MatchEntry] {
             match (ast) {
-                | Ast.MatchEntry.Case(p, e) => Hir.MatchEntry(Hir.Scope.Block(scope), trans(scope, p), trans(scope, e))
+                | Ast.MatchEntry.Case(p, e) => trans(e).map(ee => Hir.MatchEntry(trans(p), ee))
+                | Ast.MatchEntry.Error as e => Result.Failure(e.ToString())
             }
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.IfEntry): Hir.SwitchEntry {
+        public trans(ast: Ast.IfEntry): Result[Hir.SwitchEntry] {
             match (ast) {
-                | Ast.IfEntry.Then(p, e) => Hir.SwitchEntry(Hir.Scope.Block(scope), trans(scope, p), trans(scope, e))
-                | Ast.IfEntry.Else(e) => Hir.SwitchEntry(Hir.Scope.Block(scope), Hir.Expr.Bool(true), trans(scope, e))
-                | Ast.IfEntry.Error as e => throw Exception(e.ToString())
+                | Ast.IfEntry.Then(p, e) => trans(p).bind(pp => trans(e).map(ee => Hir.SwitchEntry(pp, ee)))
+                | Ast.IfEntry.Else(e) => trans(e).map(ee => Hir.SwitchEntry(Hir.Expr.Bool(true), ee))
+                | Ast.IfEntry.Error as e => Result.Failure(e.ToString())
             }
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.Stmt): Hir.Stmt {
-            def stmt: Hir.Stmt = match (ast) {
-                | Ast.Stmt.Expr(expr) => Hir.Stmt.Expr(trans(scope, expr))
+        public trans(ast: Ast.Stmt): Result[Hir.Stmt] {
+            def stmt: Result[Hir.Stmt] = match (ast) {
+                | Ast.Stmt.Expr(expr) => trans(expr).map(e => Hir.Stmt.Expr(e))
                 | Ast.Stmt.Val(name, expr) => {
-                    def rhs = trans(scope, expr);
-                    Hir.Stmt.Var(Hir.Expr.Id(name), rhs, false)
+                    trans(expr).map(rhs => Hir.Stmt.Var(Hir.Expr.Id(name), rhs, false))
                 }
                 | Ast.Stmt.Var(name, expr) => {
-                    def rhs = trans(scope, expr);
-                    Hir.Stmt.Var(Hir.Expr.Id(name), rhs, true)
+                    trans(expr).map(rhs => Hir.Stmt.Var(Hir.Expr.Id(name), rhs, true))
                 }
                 | Ast.Stmt.Assign(name, expr) => {
-                    def rhs = trans(scope, expr);
-                    Hir.Stmt.Assign(Hir.Expr.Id(name), rhs)
+                    trans(expr).map(rhs => Hir.Stmt.Assign(Hir.Expr.Id(name), rhs))
                 }
-                | Ast.Stmt.Ret(expr) => Hir.Stmt.Return(trans(scope, expr))
+                | Ast.Stmt.Ret(expr) => trans(expr).map(e => Hir.Stmt.Return(e))
                 | Ast.Stmt.Fn(f) => {
-                    def method = trans(scope, f);
-                    Hir.Stmt.Var(Hir.Expr.Id(method.name), method.fn, false); // syntax suger
+                    trans(f).map(method => Hir.Stmt.Var(Hir.Expr.Id(method.name), method.fn, false)) // syntax suger
                 }
-                | Ast.Stmt.Error as e => throw Exception(e.ToString())
+                | Ast.Stmt.Error as e => Result.Failure(e.ToString())
             };
-            stmt.addSpan(ast.span)
+            stmt.map(s => s.addSpan(ast.span))
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.Expr): Hir.Expr {
-            def expr: Hir.Expr = match (ast) {
-                | Ast.Expr.Unit => Hir.Expr.Unit()
-                | Ast.Expr.Int(value) => Hir.Expr.Int(value)
-                | Ast.Expr.Double(value) => Hir.Expr.Double(value)
-                | Ast.Expr.String(value) => Hir.Expr.String(value)
+        public trans(ast: Ast.Expr): Result[Hir.Expr] {
+            def expr: Result[Hir.Expr] = match (ast) {
+                | Ast.Expr.Unit => Result.Success(Hir.Expr.Unit())
+                | Ast.Expr.Int(value) => Result.Success(Hir.Expr.Int(value))
+                | Ast.Expr.Double(value) => Result.Success(Hir.Expr.Double(value))
+                | Ast.Expr.String(value) => Result.Success(Hir.Expr.String(value))
                 | Ast.Expr.Block(stmts) => {
-                    def block = Hir.Expr.Block(scope);
-                    block.stmts = stmts.Map(s => trans(block.scope, s)).ToList();
-                    block
+                    def block = Hir.Expr.Block();
+                    stmts.Map(s => trans(s)).seq().map(ss => {
+                        block.stmts = ss.ToList();
+                        block
+                    })
                 }
                 | Ast.Expr.Fn(args, body) => {
-                    def fn = Hir.Expr.Fn(scope, args.Map(_.name));
+                    def fn = Hir.Expr.Fn(args.Map(_.name));
                     fn.typeHint = TypeHint.Fn(args.Map(arg => arg.typeHint), trans(body.typeHint));
-                    fn.body = trans(fn.scope, body);
-                    fn
+                    trans(body).map(b => {
+                        fn.body = b;
+                        fn
+                    })
                 }
-                | Ast.Expr.Id(value) => Hir.Expr.Id(value)
-                | Ast.Expr.Member(expr, member) => Hir.Expr.Member(trans(scope, expr), member)
-                | Ast.Expr.StaticMember(objName, member) => Hir.Expr.StaticMember(objName, member)
-                | Ast.Expr.Apply(fn, args) => Hir.Expr.Apply(trans(scope, fn), args.Map(e => trans(scope, e)))
-                | Ast.Expr.If(entries) => Hir.Expr.Switch(entries.Map(en => trans(scope, en)))
-                | Ast.Expr.Match(e, entries) => Hir.Expr.Match(Hir.Scope.Block(scope), trans(scope, e), entries.Map(en => trans(scope, en)))
-                | Ast.Expr.Error as e => throw Exception(e.ToString())
+                | Ast.Expr.Id(value) => Result.Success(Hir.Expr.Id(value))
+                | Ast.Expr.Member(expr, member) => trans(expr).map(e => Hir.Expr.Member(e, member))
+                | Ast.Expr.StaticMember(objName, member) => Result.Success(Hir.Expr.StaticMember(objName, member))
+                | Ast.Expr.Apply(fn, args) => trans(fn).bind(f => args.Map(e => trans(e)).seq().map(es => Hir.Expr.Apply(f, es.NToList())))
+                | Ast.Expr.If(entries) => entries.Map(en => trans(en)).seq().map(es => Hir.Expr.Switch(es.NToList()))
+                | Ast.Expr.Match(e, entries) => trans(e).bind(ee => entries.Map(en => trans(en)).seq().map(es => Hir.Expr.Match(ee, es.NToList())))
+                | Ast.Expr.Error as e => Result.Failure(e.ToString())
             }
-            expr.typeHint = trans(ast.typeHint);
-            expr.addSpan(ast.span)
+            
+            expr.map(e => {
+                e.typeHint = trans(ast.typeHint);
+                e.addSpan(ast.span)
+            })
         }
         
-        searchTypeScopeName(scope: Hir.Scope): option[string] {
-            match (scope) {
-                | Hir.Scope.Type as t => Some(t.name)
-                | _ => match (scope.getParent()) {
-                    | Some(p) => searchTypeScopeName(p)
-                    | _ => None()
-                }
-            }
-        }
-        
-        public trans(scope: Hir.Scope, ast: Ast.Fn): Hir.Method {
-            def errors = List();
-            def (name, args, ret, body) = match (ast) {
-                | Ast.Fn.Static(name, args, ret, body) => (name, args, ret, body)
+        public trans(ast: Ast.Fn): Result[Hir.Method] {
+            def t = match (ast) {
+                | Ast.Fn.Static(name, args, ret, body) => Result.Success(name, args, ret, body)
                 | Ast.Fn.Instance(name, args, ret, body) => {
                     // this引数を追加する
-                    def typeName = searchTypeScopeName(scope);
-                    when (typeName.IsNone) {
-                        errors.Add(Hir.Error.Syntax("Cannot define Instance method at outside of Type"));
-                    }
-                    
-                    (name, Ast.FnArg("this", TypeHint.Name(typeName.Value)) :: args, ret, body)
+                    Result.Success(name, Ast.FnArg("this", TypeHint.None()) :: args, ret, body)
                 }
-                | Ast.Fn.Error as e => throw Exception(e.ToString())
+                | Ast.Fn.Error as e => Result.Failure(e.ToString())
             };
             
-            def fnType = TypeHint.Fn(args.Map(_.typeHint), ret);
-            _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
+            match (t) {
+                | Result.Success((name, args, ret, body)) => {
+                    def fnType = TypeHint.Fn(args.Map(_.typeHint), ret);
+                    _ = fnType.addSpan(args.Map(_.span) + [ret.span]);
                     
-            def fn = Hir.Expr.Fn(scope, args.Map(_.name));
-            _ = fn.addSpan(ast.span);
-            fn.typeHint = fnType;
+                    def fn = Hir.Expr.Fn(args.Map(_.name));
+                    _ = fn.addSpan(ast.span);
+                    fn.typeHint = fnType;
                     
-            fn.body = trans(fn.scope, body); // 関数のスコープを作ってから本体を定義
-                    
-            Hir.Method(name, fn)
+                    trans(body).map(b => {
+                        fn.body = b;
+                        Hir.Method(name, fn)
+                    })
+                }
+                | Result.Failure(e) => Result.Failure(e)
+            }
         }
         
-        public trans(scope: Hir.Scope, ast: Ast.Decl.Type): Type.Define {
-            def ty = Type.Define(scope, ast.name);
+        public trans(ast: Ast.Decl.Type): Result[Type.Define] {
+            def ty = Type.Define(ast.name);
             foreach (item in ast.items) {
-                match (item) {
+                _ = match (item) {
                     | Ast.TypeItem.Field as p => ty.fields.Add(TypeField(p.name, trans(Some(p.typeHint))))
-                    | Ast.TypeItem.Method as m => ty.methods.Add(trans(ty.scope, m.fn))
-                    | Ast.TypeItem.Error as e => throw Exception(e.ToString())
+                    | Ast.TypeItem.Method as m => {
+                        match (trans(m.fn)) {
+                            | Result.Success(mm) => ty.methods.Add(mm)
+                            | Result.Failure(e) => return Result.Failure(e)
+                        }
+                    }
+                    | Ast.TypeItem.Error as e => return Result.Failure(e.ToString())
                 }
             }
             
-            ty
+            Result.Success(ty)
         }
         
-        public declare(mod: Hir.Module, ast: Ast.Decl): void {
-            match (ast) {
-                | Ast.Decl.Import(path) => mod.import(path)
-                | Ast.Decl.StaticFn(f) => mod.methods.Add(trans(mod.scope, f))
-                | Ast.Decl.Type as t => mod.types.Add(trans(mod.scope, t))
-                | Ast.Decl.Error as e => throw Exception(e.ToString())
-            }
-        }
-        
-        public trans(globalScope: Hir.Scope.Global, ast: Ast.Module, name: string): Hir.Module {
-            def mod = Hir.Module(globalScope, name);
+        public trans(ast: Ast.Module, name: string): Result[Hir.Module] {
+            def mod = Hir.Module(name);
             foreach (decl in ast.decls) {
-                declare(mod, decl);
+                match (decl) {
+                    | Ast.Decl.Import(path) => mod.import(path)
+                    | Ast.Decl.StaticFn(f) => {
+                        def r = trans(f);
+                        when (r.isFailure())
+                            return Result.Failure(r.getError().Value);
+                        mod.methods.Add(r.getResult().Value);
+                    }
+                    | Ast.Decl.Type as t => {
+                        def r = trans(t);
+                        when (r.isFailure())
+                            return Result.Failure(r.getError().Value);
+                        mod.types.Add(r.getResult().Value);
+                    }
+                    | Ast.Decl.Error as e => return Result.Failure(e.ToString())
+                }
             }
-            mod
+            Result.Success(mod)
         }
     }
 }

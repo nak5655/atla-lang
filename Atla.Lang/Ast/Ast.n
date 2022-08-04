@@ -12,6 +12,7 @@ using Atla;
 using Atla.Lang;
 using Atla.Lang.Parse;
 
+// TODO エラーのToStringを実装する
 namespace Atla.Lang.Ast
 {
     public variant Pattern: HasSpan[Pattern] {

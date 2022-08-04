@@ -144,17 +144,15 @@ namespace Atla.Lang
             public fields: List[TypeField];
             public methods: List[Hir.Method];
         
-            public scope: Hir.Scope.Type;
+            public mutable scope: Hir.Scope.Type;
             
             public mutable info: option[TypeInfo];
         
-            public this(parentScope: Hir.Scope, name: string) {
+            public this(name: string) {
                 this.name = name;
                 fields = List();
                 methods = List();
             
-                this.scope = Hir.Scope.Type(parentScope, name);
-                
                 this.info = None();
             }
             

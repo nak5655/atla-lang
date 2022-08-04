@@ -20,15 +20,17 @@ namespace Atla.Lang.Hir
         
         replaceFn(scope: Hir.Scope, hir: Hir.HasExpr): IEnumerable[Type.Define] {
             mutable ret: List[Type.Define] = List();
-            hir.replaceExpr(scope, (s, e) => match (e) {
+            hir.replaceExpr(scope, (s: Scope, e) => match (e) {
                 | Hir.Expr.Fn as f => {
                     // bodyはすでに置換済みなので注意（Bottom-Upなので）
                     
                     // クロージャーを表すクラスを作成
-                    def fClass = Type.Define(scope.globalScope(), getUniqueName());
+                    def fClass = Type.Define(getUniqueName());
+                    fClass.scope = Scope.Type(scope.globalScope(), fClass.name);
                     
                      // コンストラクタ作成
-                    def fClassCtor = Hir.Expr.Fn(fClass.scope, []);
+                    def fClassCtor = Hir.Expr.Fn([]);
+                    fClassCtor.scope = Scope.Fn(fClass.scope);
                     fClass.methods.Add(Hir.Method("ctor", fClassCtor)); // TODO コンストラクタの表現方法(とりあえず名前をctorにする)
                     ret.Add(fClass);
                     
@@ -59,7 +61,8 @@ namespace Atla.Lang.Hir
                     fClass.methods.Add(Hir.Method("closure`invoke", f));
                     
                     // 元の関数式をクロージャーに置き換え
-                    def block = Hir.Expr.Block(s);
+                    def block = Hir.Expr.Block();
+                    block.scope = Scope.Block(s);
                     block.stmts.AddRange([
                         // コンストラクタ呼び出し
                         //Hir.Stmt.Let(Hir.Expr.Id(fClassInst), Hir.Expr.Apply(Hir.Expr.StaticMember()), false),

@@ -20,14 +20,31 @@ namespace Atla.Lang
             this.handleProblem = handleProblem;
         }
         
-        public updateModule(asm: Hir.Assembly, name: string, code: string): option[Hir.Module] {
+        public updateModule(asm: Hir.Assembly, modulePath: string, code: string): option[Hir.Module] {
             def lexer = Atla.Lang.Parser.Lexer();
             match (lexer.tokenize(code)) {
                 | Atla.Lang.Parse.Result.Success(tokens, _) => {        
                     def parser = Atla.Lang.Parser.Parser();
                     match (parser.mod.parse(Atla.Lang.Parser.TokenInput(tokens, 0))) {
-                        | Atla.Lang.Parse.Result.Success(ast, _) => { 
-                            def hir = Atla.Lang.Ast.Trans().trans(asm.scope, ast, name);
+                        | Atla.Lang.Parse.Result.Success(ast, _) => {
+                            when (modulePath.IsEmpty()) {
+                                handleProblem(Problem(Severity.Error, "module path must not be empty.", Span.zero()));
+                                return None();
+                            }
+                            
+                            // パスの分割
+                            def path = modulePath.Split(Consts.MODULE_SEP.ToArray());
+                            
+                            // モジュールを変換
+                            def rhir = Atla.Lang.Ast.Trans().trans(ast, path.Last());
+                            when (rhir.isFailure()) {
+                                handleProblem(Problem(Severity.Error, $"Could not get module $modulePath.", Span.zero()));
+                                return None();
+                            }
+                            def hir = rhir.getResult().Value;
+                            
+                            // モジュールをアセンブリに追加(すでに同じ名前である場合、子モジュールは維持される)
+                            asm.updateModule(path, hir);
                             
                             def transProblems = hir.scanErrors();
                             when (transProblems.Count() > 0) {
@@ -37,6 +54,7 @@ namespace Atla.Lang
                                 return None();
                             }
                             
+                            // TODO 先に型の定義だけ行う
                             Atla.Lang.Hir.Typing().typing(hir);
                             def typingProblems = hir.scanErrors();
                             when (typingProblems.Count() > 0) {
@@ -45,8 +63,6 @@ namespace Atla.Lang
                                 }
                                 return None();
                             }
-            
-                            asm.modules[name] = hir;
             
                             Some(hir)
                         }

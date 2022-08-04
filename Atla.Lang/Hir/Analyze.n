@@ -1,0 +1,28 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Atla.Lang.Hir
+{
+    // 型宣言を処理しながらScopeを構築
+    // 型は型変数を宣言するだけ
+    class Analyze
+    {
+        
+        searchTypeScopeName(scope: Hir.Scope): option[string] {
+            match (scope) {
+                | Hir.Scope.Type as t => Some(t.name)
+                | _ => match (scope.getParent()) {
+                    | Some(p) => searchTypeScopeName(p)
+                    | _ => None()
+                }
+            }
+        }
+        
+    }
+}

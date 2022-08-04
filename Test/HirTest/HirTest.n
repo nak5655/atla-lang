@@ -51,8 +51,9 @@ namespace Test.HirTest
         [Test]
         public HirRecursiveTypingTest(): void {
             def globalScope = Atla.Lang.Hir.Scope.Global();
-            def blockScope = Atla.Lang.Hir.Scope.Block(globalScope, None());
-            def block = Expr.Block(blockScope);
+            def block = Expr.Block();
+            block.scope = Atla.Lang.Hir.Scope.Block(globalScope, None());
+            
             block.stmts.AddRange([
                 Stmt.Var(Expr.Id("a"), Expr.Int(1), false),
                 Stmt.Var(Expr.Id("b"), Expr.Id("a"), false),
@@ -67,9 +68,10 @@ namespace Test.HirTest
         
         [Test]
         public HirRecursiveFnTypingTest(): void {
-            def mod = Module(Atla.Lang.Hir.Scope.Global(), "main");
-            def mainFn = Expr.Fn(mod.scope, ["a"]);
-            def mainFnBody = Expr.Block(mainFn.scope);
+            def mod = Module("main");
+            mod.scope = Atla.Lang.Hir.Scope.Global();
+            def mainFn = Expr.Fn(["a"]);
+            def mainFnBody = Expr.Block();
             mainFnBody.stmts.AddRange([
                 Stmt.Return(Expr.Apply(Expr.Id("+"), [
                     Expr.Id("a"),
@@ -116,6 +118,27 @@ namespace Test.HirTest
             
             def errors = thir.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
+        }
+        
+        [Test]
+        public HirSubModuleTest(): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            
+            { // main
+                def code = Misc.readCase("ModuleMain.atla");
+                def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+            
+                def errors = thir.scanErrors().Distinct().ToList();
+                Assert.AreEqual(0, errors.Count());
+            }
+            
+            { // main
+                def code = Misc.readCase("Sub/Greet.atla");
+                def thir = Misc.compiler.updateModule(asm, "greet", code).Value;
+            
+                def errors = thir.scanErrors().Distinct().ToList();
+                Assert.AreEqual(0, errors.Count());
+            }
         }
     }
 }

@@ -30,8 +30,8 @@ namespace Test.AstTest
             def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
-            def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
-            Assert.AreEqual(0, hir.scanErrors().Count());
+            def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
+            Assert.AreEqual(0, hir.getResult().Value.scanErrors().Count());
         }
         
         [Test]
@@ -45,8 +45,8 @@ namespace Test.AstTest
             def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
-            def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
-            Assert.AreEqual(0, hir.scanErrors().Count());
+            def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
+            Assert.AreEqual(0, hir.getResult().Value.scanErrors().Count());
         }
         
         [Test]
@@ -60,8 +60,8 @@ namespace Test.AstTest
             def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
-            def hir = (Atla.Lang.Ast.Trans().trans(Atla.Lang.Hir.Scope.Global(), ast, "main"));
-            Assert.AreEqual(0, hir.scanErrors().Count());
+            def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
+            Assert.AreEqual(0, hir.getResult().Value.scanErrors().Count());
         }
     }
 }
