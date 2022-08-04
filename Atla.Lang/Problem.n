@@ -18,10 +18,10 @@ namespace Atla.Lang
     }
     
     public class Problem {
-        mutable severity: Severity;
-        mutable file: option[string];
-        mutable span: Span;
-        mutable message: string;
+        public mutable severity: Severity;
+        public mutable file: option[string];
+        public mutable span: Span;
+        public mutable message: string;
         
         public this(severity: Atla.Lang.Severity, message: string, span: Span) {
             this.severity = severity;
