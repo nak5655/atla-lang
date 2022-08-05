@@ -65,6 +65,9 @@ namespace Atla.Lang.Hir
         }
         
         public analyze(tyDef: Type.Define): void {
+            // コンストラクタ
+            _ = tyDef.scope.parent.declareLocal(tyDef.name, Type.Fn(tyDef.fields.Map(_.type), tyDef));
+            
             // フィールド
             foreach (field in tyDef.fields) {
                 def sym = tyDef.scope.declareLocal(field.name, field.type);
@@ -78,10 +81,12 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public analyze(hir: Hir.Module): void {
+        public analyze(parentScope: Scope, hir: Hir.Module): void {
+            hir.scope = Scope.Module(parentScope, hir.name);
+            
             foreach ((modName, mod) in hir.modules.KeyValuePairs) {
                 mod.scope = Scope.Module(hir.scope, modName);
-                analyze(mod);
+                analyze(hir.scope, mod);
             }
             
             // まだimport先が定義されてない可能性があるので型変数だけ宣言しておく
@@ -94,9 +99,6 @@ namespace Atla.Lang.Hir
                 hir.scope.declareType(ty.name, ty);
                 ty.scope = Scope.Type(hir.scope, ty.name);
                 
-                // コンストラクタ
-                _ = hir.scope.declareLocal(ty.name, Type.Fn(ty.fields.Map(_.type), ty));
-            
                 analyze(ty);
             }
             
@@ -106,12 +108,11 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public analyze(hir: Hir.Assembly): void {
-            hir.scope = Scope.Global();
+        public analyze(parentScope: Scope.Global, hir: Hir.Assembly): void {
+            hir.scope = Scope.Assembly(parentScope, hir.name);
             
-            foreach ((modName, mod) in hir.modules.KeyValuePairs) {
-                mod.scope = Scope.Module(hir.scope, modName);
-                analyze(mod);
+            foreach (mod in hir.modules.Values) {
+                analyze(hir.scope, mod);
             }
         }
     }

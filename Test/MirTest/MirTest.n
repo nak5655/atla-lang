@@ -19,51 +19,49 @@ namespace Test.MirTest
         [Test]
         public MirEasyTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
+            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
             def code = Misc.readCase("hello.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
+            Misc.compiler.compileHirToThir(asm);
             def _mir = Misc.compiler.compileHirToMir(asm);
             def mir = _mir.Value.modules["main"];
-            
-            Assert.AreEqual(1, mir.methods.Count());
-            Assert.AreEqual(1, mir.methods.First().body.Length);
-            Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
         
         [Test]
         public MirFibonacciTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
+            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
             def code = Misc.readCase("fibonacci.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
+            Misc.compiler.compileHirToThir(asm);
             def _mir = Misc.compiler.compileHirToMir(asm);
             def mir = _mir.Value.modules["main"];
-            
-            Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
         
         [Test]
         public MirGeometryTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
+            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
             def code = Misc.readCase("geometry.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
+            Misc.compiler.compileHirToThir(asm);
             def _mir = Misc.compiler.compileHirToMir(asm);
             def mir = _mir.Value.modules["main"];
-            
-            Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
         
         [Test]
         public MirCountUpTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
+            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
             def code = Misc.readCase("countup.atla");
             _ = Misc.compiler.updateModule(asm, "main", code);
+            Misc.compiler.compileHirToThir(asm);
             def _mir = Misc.compiler.compileHirToMir(asm);
             def mir = _mir.Value.modules["main"];
-            
-            Assert.IsInstanceOf(typeof(Atla.Lang.Mir.Ins.Call), mir.methods.First().body.First()); // it is Call, not CallAssign. Because the return value is void.
         }
     }
 }

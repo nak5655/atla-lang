@@ -88,6 +88,9 @@
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.n" />
+    <Compile Include="TypeTest\TypeTest.n">
+      <SubType>Code</SubType>
+    </Compile>
   </ItemGroup>
   <ItemGroup>
     <Folder Include="cases\Sub" />
@@ -96,6 +99,7 @@
     <Folder Include="cases" />
     <Folder Include="AstTest" />
     <Folder Include="MirTest" />
+    <Folder Include="TypeTest" />
     <Folder Include="ParserTest\" />
     <Folder Include="Properties\" />
   </ItemGroup>

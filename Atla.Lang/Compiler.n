@@ -55,7 +55,7 @@ namespace Atla.Lang
                             }
                             
                             // 型の定義だけ行う
-                            Atla.Lang.Hir.Analyze().analyze(hir);
+                            Atla.Lang.Hir.Analyze().analyze(asm.scope, hir);
 
                             Some(hir)
                         }
@@ -73,7 +73,7 @@ namespace Atla.Lang
             }
         }
         
-        public typeCheck(asm: Hir.Assembly): void {
+        public compileHirToThir(asm: Hir.Assembly): void {
             Atla.Lang.Hir.Typing().typing(asm);
             def typingProblems = asm.scanErrors();
             when (typingProblems.Count() > 0) {

@@ -136,6 +136,18 @@ namespace Atla.Lang.Hir
                         | _ => Result.Failure($"$(id.name) does not exist in scope.")
                     }
                 }
+                | Hir.Stmt.Assign(id, expr) => {
+                    match (id.getSymbol(scope)) {
+                        | Some(sym) => {
+                            def re = trans(frame, scope, expr);
+                            re.bind(kn => match (kn) {
+                                | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(sym, res)]))
+                                | _ => Result.Failure($"$expr has no value.")
+                            })
+                        }
+                        | _ => Result.Failure($"$(id.name) does not exist in scope.")
+                    }
+                }
                 | Hir.Stmt.Return(e) => {
                     mutable retScope = scope;
                     while (true) {
@@ -200,7 +212,10 @@ namespace Atla.Lang.Hir
                                     // 定義中の型
                                     def fis = ty.fields.Filter(fi => fi.name == name);
                                     if (fis.Count() == 0) {
-                                        def fnType = Type.Fn([ty], hir.type); // 自分自身のみを引数とするインスタンスメソッド
+                                        def fnType = match (hir.type.pruned()) {
+                                            | Type.Fn(args, ret) => Type.Fn(ty :: args, ret) // インスタンスメソッド
+                                            | _ => Type.Fn([ty], hir.type); // 自分自身のみを引数とするインスタンスメソッド
+                                        };
                                         def mis = ty.methods.Filter(mi => mi.name == name && mi.fn.type.canUnify(fnType));
                                         if (mis.Count() == 0)
                                             (ty, None())

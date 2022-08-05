@@ -180,7 +180,7 @@ namespace Atla.Lang
             }
         }
         | Fn {
-            args: list[Type]; ret: Type;
+            mutable args: list[Type]; ret: Type;
             
             public override ToString(): string {
                 def argsStr = args.joinToString(", ");
@@ -292,12 +292,8 @@ namespace Atla.Lang
         // pruneと違って型関数内の型変数を置換しない
         public unVar(): Type {
             match (this) {
-                | Var(t) => {
-                    match (t) {
-                        | it is Var => it.unVar()
-                        | _ => t
-                    }
-                }
+                | Var(t) => t.unVar()
+                | OneOf(ts) when ts.Length == 1 => ts.First().unVar()
                 | _ => this
             }
         }
@@ -309,7 +305,7 @@ namespace Atla.Lang
             
             match (other) {
                 | Var(t) => occursIn(t)
-                | OneOf => false // 型を構成しているわけではないのでチェックしない(してはいけない 常にUnifyできる)
+                | OneOf(ts) => ts.All(tt => occursIn(tt)) // 型を構成しているわけではないのでどれかに出現しないならOK 全部はさすがにアウト
                 | Fn(args, ret) => args.Any(arg => occursIn(arg)) || occursIn(ret)
                 | Generics(b, ps) => occursIn(b) || ps.Any(p => occursIn(p))
                 | _ => false

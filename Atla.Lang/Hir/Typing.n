@@ -84,6 +84,15 @@ namespace Atla.Lang.Hir
                         | it is Type.Fn => it
                         | _ => Type.Fn(args.Map(_ => Type.Var()), Type.Var())
                     }
+                    
+                    // インスタンスメソッド(最初の引数がthisなら)
+                    when (args.Length > 0 && args.First().name == "this") {
+                        def typeName = searchTypeScopeName(scope);
+                        when (typeName.IsSome) {
+                            fnType.args = scope.resolveType(typeName.Value) :: fnType.args.Tail;
+                        }
+                    }
+                    
                     // 引数の型推論
                     foreach (i in Enumerable.Range(0, fnType.args.Count())) {
                         _ = bodyScope.resolveArgNth(i).Value.type.unify(fnType.args.Nth(i));
@@ -117,7 +126,11 @@ namespace Atla.Lang.Hir
                                 }
                                 | _ => null // そもそも関数じゃない
                             }).Filter(t => t != null); // 合わなかった型を除く
-                            Type.OneOf(fieldsTypes.Concat(methodsTypes).NToList())
+                            def cand = fieldsTypes.Concat(methodsTypes).NToList();
+                            if (cand.Length == 0)
+                                Type.Error(TypeError.InferenceFailure($"Could not find field $name in $(it.name)."))
+                            else
+                                Type.OneOf(cand)
                         }
                         // TODO Native
                         | _ => Type.Unknown()
@@ -168,10 +181,10 @@ namespace Atla.Lang.Hir
                         typing(scope, arg, Type.Unknown());
                     }
                     // 関数を解決
-                    typing(scope, fn, Type.Fn(args.Map(_.type), expected));
+                    typing(scope, fn, Type.Fn(args.Map(_.type), Type.Var(expected)));
                     
                     // 関数の型から引数と返り値を推論
-                    match (fn.type.pruned()) {
+                    match (fn.type.unVar()) {
                         | Type.Fn(xs, y) when xs.Length == args.Length => {
                             foreach ((arg, x) in args.Zip(xs)) {
                                 _ = arg.type.unify(x)
@@ -216,6 +229,16 @@ namespace Atla.Lang.Hir
                 | Hir.Stmt.Return(value) => {
                     typing(scope, value, Type.Unknown());
                     _ = scope.getRetType().Map(t => t.unify(value.type)) // 返り値でスコープの型を推論
+                }
+            }
+        }
+        
+        searchTypeScopeName(scope: Hir.Scope): option[string] {
+            match (scope) {
+                | Hir.Scope.Type as t => Some(t.name)
+                | _ => match (scope.getParent()) {
+                    | Some(p) => searchTypeScopeName(p)
+                    | _ => None()
                 }
             }
         }

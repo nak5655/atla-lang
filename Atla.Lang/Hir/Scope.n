@@ -52,7 +52,7 @@ namespace Atla.Lang.Hir
         | Assembly {
             __dummy: int = 0;
             
-            public parent: Scope.Global;
+            public mutable parent: Scope.Global;
             public name: string;
             
             public this(parent: Scope.Global, name: string) {
@@ -64,7 +64,7 @@ namespace Atla.Lang.Hir
         | Module {
             __dummy: int = 0;
             
-            public parent: Scope;
+            public mutable parent: Scope;
             public name: string;
             
             public this(parent: Scope, name: string) {
@@ -74,11 +74,11 @@ namespace Atla.Lang.Hir
             }
         }
         | Type {
-            public parent: Scope;
+            public mutable parent: Scope;
             public name: string;
         }
         | Fn { // TODO この時点でFrameにしてもいいかも
-            public parent: Scope;
+            public mutable parent: Scope;
             // TODO name あってもいいかも
             public retType: Atla.Lang.Type;
             
@@ -101,7 +101,7 @@ namespace Atla.Lang.Hir
             }
         }
         | Block {
-            public parent: Scope;
+            public mutable parent: Scope;
             public name: option[string];
             public retType: Atla.Lang.Type;
             
@@ -137,6 +137,7 @@ namespace Atla.Lang.Hir
                 | it is Type => Some(it.parent)
                 | it is Fn => Some(it.parent)
                 | it is Block => Some(it.parent)
+                | it is Assembly => Some(it.parent)
             }
         }
         
@@ -147,6 +148,7 @@ namespace Atla.Lang.Hir
                 | it is Type => Some(it.name)
                 | Fn => None()
                 | it is Block => it.name
+                | it is Assembly => Some(it.name)
             }
         }
         

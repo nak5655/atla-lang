@@ -1,0 +1,28 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using NUnit.Framework;
+
+using Atla.Lang;
+
+namespace Test.TypeTest
+{
+    [TestFixture]
+    class TypeTest
+    {
+        [Test]
+        public TypeVarUnifyTest(): void {
+            def a = Type.Var(Type.Unknown());
+            def b = Type.Var(Type.Unknown());
+            
+            a.unify(b);
+            Assert.AreEqual(a.instance, b);
+        }
+    }
+}

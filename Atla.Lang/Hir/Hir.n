@@ -27,7 +27,7 @@ namespace Atla.Lang.Hir
     
     public variant Error {
         | IllegalIndentation { message: string }
-        | DuplicatedDeclaration { name: string; type: Type; already: Type }
+        | DuplicatedDeclaration { name: string; type: Atla.Lang.Type; already: Atla.Lang.Type }
         | UndefinedReference {
             name: string; type: Atla.Lang.Type;
             
@@ -421,13 +421,11 @@ namespace Atla.Lang.Hir
     public class Assembly: HasModules {
         public name: string;
         public fileName: string;
-        public mutable scope: Scope.Global;
+        public mutable scope: Scope.Assembly;
         
         public this(name: string, fileName: string) {
             this.name = name;
             this.fileName = fileName;
-            
-            scope = Scope.Global(); // TODO Scope.Assembly? 外部アセンブリへの依存の扱いをどうするか決めてない
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {

@@ -12,42 +12,55 @@ namespace Atla.Lang.Hir
     // 関数の入れ子を外に出す(Expr.Fn -> Method)
     public class Flat
     {
-        mutable _seqId: int = -1;
-        getUniqueName(): string {
-            _seqId += 1;
-            $"closure`$_seqId"
+        mutable _seqClsId: int = -1;
+        getUniqueClassName(): string {
+            _seqClsId += 1;
+            $"Closure`$_seqClsId"
         }
         
-        replaceFn(scope: Hir.Scope, hir: Hir.HasExpr): IEnumerable[Type.Define] {
+        mutable _seqTmpId: int = -1;
+        getUniqueTempName(): string {
+            _seqTmpId += 1;
+            $"closure_tmp`$_seqTmpId"
+        }
+        
+        replaceFn(modScope: Scope.Module, scope: Hir.Scope, hir: Hir.HasExpr): IEnumerable[Type.Define] {
             mutable ret: List[Type.Define] = List();
             hir.replaceExpr(scope, (s: Scope, e) => match (e) {
                 | Hir.Expr.Fn as f => {
                     // bodyはすでに置換済みなので注意（Bottom-Upなので）
                     
                     // クロージャーを表すクラスを作成
-                    def fClass = Type.Define(getUniqueName());
-                    fClass.scope = Scope.Type(scope.globalScope(), fClass.name);
+                    def fClass = Type.Define(getUniqueClassName());
                     
-                     // コンストラクタ作成
-                    def fClassCtor = Hir.Expr.Fn([]);
-                    fClassCtor.scope = Scope.Fn(fClass.scope);
-                    fClass.methods.Add(Hir.Method("ctor", fClassCtor)); // TODO コンストラクタの表現方法(とりあえず名前をctorにする)
                     ret.Add(fClass);
                     
-                    // クラスのインスタンスのシンボル
-                    def fClassInst = scope.declareLocal(getUniqueName(), fClass);
+                    // クロージャーをインスタンスメソッドとして作成
+                    def closure = Hir.Expr.Fn("this" :: f.args.Map(_.name));
+                    match (f.type.unVar()) {
+                        | Type.Fn(args, ret) => _ = closure.type.unify(Type.Fn(fClass :: args, ret));
+                        | _ => ()
+                    }
+                    closure.body = f.body;
                     
                     // クロージャー内の自由変数を置換しながら列挙
                     def freeVars: List[string * Symbol] = List(); // 新たなフィールド名 * 元のシンボル
-                    f.body.replaceExpr(f.scope, (s, e) => match (e) {
+                    closure.body.replaceExpr(f.scope, (s, e) => match (e) {
                         | Hir.Expr.Id as it => match (it.getSymbol(s)) {
                             | Some(sym) => {
-                                // スコープの深さから自由変数を判定する
-                                if (sym.depth < f.scope.depth) {
+                                // スコープの深さから自由変数を判定する (モジュールより浅いのはアクセスできるので除く)
+                                if (modScope.depth < sym.depth && sym.depth < f.scope.depth) {
                                     // クロージャークラスのフィールドアクセスに置換
-                                    def fieldName = $"freeVar`$(freeVars.Count())";
-                                    freeVars.Add(fieldName, sym);
-                                    Hir.Expr.Member(Hir.Expr.Id(fClassInst), fieldName)
+                                    // 同じ変数が複数回登録されないように注意
+                                    def fieldName = match (NCollectionsExtensions.Find(freeVars, (n, s) => s == sym)) {
+                                        | Some((n, _)) => n // すでに置換済み
+                                        | _ => {
+                                            def n = $"freeVar`$(freeVars.Count())";
+                                            freeVars.Add(n, sym);
+                                            n
+                                        }
+                                    };
+                                    Hir.Expr.Member(Hir.Expr.Id("this"), fieldName)
                                 } else {
                                     e
                                 }
@@ -57,16 +70,42 @@ namespace Atla.Lang.Hir
                         | _ => e
                     });
                     
+                    // 自由変数をフィールドとして定義
+                    foreach ((name, sym) in freeVars) {
+                        def field = TypeField(name, TypeHint.None());
+                        _ = field.type.unify(sym.type);
+                        fClass.fields.Add(field);
+                    }
+                    
                     // 自由変数を除いた関数本体をクラス内に定義
-                    fClass.methods.Add(Hir.Method("closure`invoke", f));
+                    def met = Hir.Method("closure`invoke", closure);
+                    fClass.methods.Add(met);
+                    
+                    
+                    // 型宣言と型推論
+                    modScope.declareType(fClass.name, fClass);
+                    fClass.scope = Scope.Type(modScope, fClass.name);
+                    Analyze().analyze(fClass); // スコープ構築
+                    Typing().typing(modScope, fClass); // 型推論
+                    
+                    //
+                    // クロージャーのクラスが完成したら、クロージャーを関数呼び出し式に置き換える
+                    //
                     
                     // 元の関数式をクロージャーに置き換え
                     def block = Hir.Expr.Block();
                     block.scope = Scope.Block(s);
+                    
+                    // クラスのインスタンスの名前
+                    def fClassInst = block.scope.declareLocal(getUniqueTempName(), fClass);
+                    
                     block.stmts.AddRange([
                         // コンストラクタ呼び出し
-                        //Hir.Stmt.Let(Hir.Expr.Id(fClassInst), Hir.Expr.Apply(Hir.Expr.StaticMember()), false),
+                        Hir.Stmt.Var(Hir.Expr.Id(fClassInst), Hir.Expr.Apply(Hir.Expr.Id(fClass.name), freeVars.Map((_, sym) => Hir.Expr.Id(sym))), false),
+                        // 関数を返す
+                        Hir.Stmt.Expr(Hir.Expr.Member(Hir.Expr.Id(fClassInst), met.name)),
                     ]);
+                    Typing().typing(s, block, e.type); // 型推論
                     block
                 }
                 | _ => e
@@ -75,14 +114,14 @@ namespace Atla.Lang.Hir
             ret
         }
         
-        public flat(hir: Hir.Method): IEnumerable[Type.Define] {
-            replaceFn(hir.fn.scope, hir.fn.body)
+        public flat(modScope: Scope.Module, hir: Hir.Method): IEnumerable[Type.Define] {
+            replaceFn(modScope, hir.fn.scope, hir.fn.body)
         }
         
         public flat(hir: Hir.Module): void {
             mutable newTypes: IEnumerable[Type.Define] = [];
             foreach (method in hir.methods) {
-                newTypes = newTypes.Concat(flat(method));
+                newTypes = newTypes.Concat(flat(hir.scope, method));
             }
             hir.types.AddRange(newTypes);
         }

@@ -29,22 +29,26 @@ namespace Test.HirTest
         [Test]
         public HirEasyTypingTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
             def code = "import System::Array\nimport System::Console\n\nfn main (args: Array String): Unit = Console::WriteLine \"hello\"";
-            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+            _ = Misc.compiler.updateModule(asm, "main", code).Value;
+            Misc.compiler.compileHirToThir(asm);
             
-            def errors = thir.scanErrors().Distinct().ToList();
+            def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
         }
         
        [Test]
         public HirEasyTypingFailTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
             def code = "fn f (a: Int): String = a";
-            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+            _ = Misc.compiler.updateModule(asm, "main", code).Value;
+            Misc.compiler.compileHirToThir(asm);
             
-            def errors = thir.scanErrors().Distinct().ToList();
+            def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(1, errors.Count());
         }
         
@@ -69,7 +73,7 @@ namespace Test.HirTest
         [Test]
         public HirRecursiveFnTypingTest(): void {
             def mod = Module("main");
-            mod.scope = Atla.Lang.Hir.Scope.Global();
+            mod.scope = Hir.Scope.Module(Atla.Lang.Hir.Scope.Global(), mod.name);
             def mainFn = Expr.Fn(["a"]);
             def mainFnBody = Expr.Block();
             mainFnBody.stmts.AddRange([
@@ -90,33 +94,39 @@ namespace Test.HirTest
         [Test]
         public HirFibonacciTypingTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
             def code = Misc.readCase("fibonacci.atla");
-            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+            _ = Misc.compiler.updateModule(asm, "main", code).Value;
+            Misc.compiler.compileHirToThir(asm);
             
-            def errors = thir.scanErrors().Distinct().ToList();
+            def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
         }
         
         [Test]
         public HirCountUpTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
             def code = Misc.readCase("countup.atla");
-            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+            _ = Misc.compiler.updateModule(asm, "main", code).Value;
+            Misc.compiler.compileHirToThir(asm);
             
-            def errors = thir.scanErrors().Distinct().ToList();
+            def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
         }
         
         [Test]
         public HirGeometryTest(): void {
             def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
             def code = Misc.readCase("geometry.atla");
-            def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+            _ = Misc.compiler.updateModule(asm, "main", code).Value;
+            Misc.compiler.compileHirToThir(asm);
             
-            def errors = thir.scanErrors().Distinct().ToList();
+            def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
         }
         
