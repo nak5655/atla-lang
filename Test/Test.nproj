@@ -90,6 +90,7 @@
     <Compile Include="Properties\AssemblyInfo.n" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="cases\Sub" />
     <Folder Include="CirTest\" />
     <Folder Include="HirTest\" />
     <Folder Include="cases" />
@@ -115,6 +116,12 @@
       <SubType>Content</SubType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Content Include="cases\ModuleMain.atla">
+      <SubType>Content</SubType>
+    </Content>
+    <Content Include="cases\Sub\Greet.atla">
+      <SubType>Content</SubType>
+    </Content>
     <Content Include="packages.config">
       <SubType>Content</SubType>
     </Content>

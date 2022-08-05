@@ -13,7 +13,6 @@ namespace Atla.Lang.Hir
     // 型は型変数を宣言するだけ
     class Analyze
     {
-        
         searchTypeScopeName(scope: Hir.Scope): option[string] {
             match (scope) {
                 | Hir.Scope.Type as t => Some(t.name)
@@ -24,5 +23,96 @@ namespace Atla.Lang.Hir
             }
         }
         
+        public analyze(scope: Hir.Scope, hir: Hir.Stmt): void {
+            match (hir) {
+                | Var as v => analyze(scope, v.expr);
+                | Assign as s => analyze(scope, s.expr);
+                | Expr as e => analyze(scope, e.expr);
+                | Return as r => analyze(scope, r.expr);
+            }
+        }
+        
+        public analyze(scope: Hir.Scope, hir: Hir.Expr): void {
+            match (hir) {
+                | Unit | Bool | Int | Double | String
+                | Id | Member | StaticMember | Apply => ()
+                | Block as blk => {
+                    blk.scope = Scope.Block(scope);
+                    foreach (stmt in blk.stmts) {
+                        analyze(blk.scope, stmt);
+                    }
+                }
+                | Fn as fn => {
+                    fn.scope = Scope.Fn(scope);
+                    foreach (arg in fn.args) {
+                        fn.scope.declareArg(arg.name, Type.Var());
+                    }
+                    analyze(fn.scope, fn.body);
+                }
+                | Switch as sw => {
+                    foreach (entry in sw.entries) {
+                        entry.bodyScope = Scope.Block(scope);
+                        analyze(entry.bodyScope, entry.body);
+                    }
+                }
+                | Match as mc => {
+                    foreach (entry in mc.entries) {
+                        entry.bodyScope = Scope.Block(scope);
+                        analyze(entry.bodyScope, entry.body);
+                    }
+                }
+            }
+        }
+        
+        public analyze(tyDef: Type.Define): void {
+            // フィールド
+            foreach (field in tyDef.fields) {
+                def sym = tyDef.scope.declareLocal(field.name, field.type);
+                field.setSymbol(sym);
+            }
+            
+            // メソッド
+            foreach (mt in tyDef.methods) {
+                _ = tyDef.scope.declareLocal(mt.name, mt.fn.type);
+                analyze(tyDef.scope, mt.fn);
+            }
+        }
+        
+        public analyze(hir: Hir.Module): void {
+            foreach ((modName, mod) in hir.modules.KeyValuePairs) {
+                mod.scope = Scope.Module(hir.scope, modName);
+                analyze(mod);
+            }
+            
+            // まだimport先が定義されてない可能性があるので型変数だけ宣言しておく
+            foreach (import in hir.imports) {
+                // declare short name (e.g. "System.String" is declared as "String")
+                hir.scope.declareType(import.path.Last(), Type.Var());
+            }
+            
+            foreach (ty in hir.types) {
+                hir.scope.declareType(ty.name, ty);
+                ty.scope = Scope.Type(hir.scope, ty.name);
+                
+                // コンストラクタ
+                _ = hir.scope.declareLocal(ty.name, Type.Fn(ty.fields.Map(_.type), ty));
+            
+                analyze(ty);
+            }
+            
+            foreach (mt in hir.methods) {
+                _ = hir.scope.declareLocal(mt.name, mt.fn.type);
+                analyze(hir.scope, mt.fn);
+            }
+        }
+        
+        public analyze(hir: Hir.Assembly): void {
+            hir.scope = Scope.Global();
+            
+            foreach ((modName, mod) in hir.modules.KeyValuePairs) {
+                mod.scope = Scope.Module(hir.scope, modName);
+                analyze(mod);
+            }
+        }
     }
 }

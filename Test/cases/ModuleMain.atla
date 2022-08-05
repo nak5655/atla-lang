@@ -1,0 +1,4 @@
+﻿import System::Array
+import Sub::Greet
+
+fn main (args: Array String): Unit = Greet::greet "World"

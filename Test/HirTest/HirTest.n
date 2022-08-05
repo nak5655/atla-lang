@@ -120,25 +120,25 @@ namespace Test.HirTest
             Assert.AreEqual(0, errors.Count());
         }
         
-        [Test]
-        public HirSubModuleTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
-            
-            { // main
-                def code = Misc.readCase("ModuleMain.atla");
-                def thir = Misc.compiler.updateModule(asm, "main", code).Value;
-            
-                def errors = thir.scanErrors().Distinct().ToList();
-                Assert.AreEqual(0, errors.Count());
-            }
-            
-            { // main
-                def code = Misc.readCase("Sub/Greet.atla");
-                def thir = Misc.compiler.updateModule(asm, "greet", code).Value;
-            
-                def errors = thir.scanErrors().Distinct().ToList();
-                Assert.AreEqual(0, errors.Count());
-            }
-        }
+        //[Test]
+        //public HirSubModuleTest(): void {
+        //    def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+        //    
+        //    { // main
+        //        def code = Misc.readCase("ModuleMain.atla");
+        //        def thir = Misc.compiler.updateModule(asm, "main", code).Value;
+        //    
+        //        def errors = thir.scanErrors().Distinct().ToList();
+        //        Assert.AreEqual(0, errors.Count());
+        //    }
+        //    
+        //    { // main
+        //        def code = Misc.readCase("Sub/Greet.atla");
+        //        def thir = Misc.compiler.updateModule(asm, "greet", code).Value;
+        //    
+        //        def errors = thir.scanErrors().Distinct().ToList();
+        //        Assert.AreEqual(0, errors.Count());
+        //    }
+        //}
     }
 }

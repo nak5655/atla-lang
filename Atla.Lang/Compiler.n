@@ -54,16 +54,9 @@ namespace Atla.Lang
                                 return None();
                             }
                             
-                            // TODO 先に型の定義だけ行う
-                            Atla.Lang.Hir.Typing().typing(hir);
-                            def typingProblems = hir.scanErrors();
-                            when (typingProblems.Count() > 0) {
-                                foreach ((error, span) in typingProblems) {
-                                    handleProblem(Problem(Severity.Error, error.ToString(), span))
-                                }
-                                return None();
-                            }
-            
+                            // 型の定義だけ行う
+                            Atla.Lang.Hir.Analyze().analyze(hir);
+
                             Some(hir)
                         }
                         | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
@@ -76,6 +69,16 @@ namespace Atla.Lang
                     def pos = failAt.position() :> Atla.Lang.Parse.Position;
                     handleProblem(Problem(Severity.Error, reason, Span(pos, pos.right())));
                     None()
+                }
+            }
+        }
+        
+        public typeCheck(asm: Hir.Assembly): void {
+            Atla.Lang.Hir.Typing().typing(asm);
+            def typingProblems = asm.scanErrors();
+            when (typingProblems.Count() > 0) {
+                foreach ((error, span) in typingProblems) {
+                    handleProblem(Problem(Severity.Error, error.ToString(), span))
                 }
             }
         }

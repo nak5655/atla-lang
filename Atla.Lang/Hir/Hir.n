@@ -362,7 +362,6 @@ namespace Atla.Lang.Hir
     }
     
     public abstract class HasModules {
-        public mutable scope: Scope;
         public mutable modules: Hashtable[string, Module] = Hashtable();
         
         // モジュールの作成（パスの途中のモジュールも無ければ作られる）すでにあるならそれを返す
@@ -396,6 +395,7 @@ namespace Atla.Lang.Hir
         public imports: List[Import];
         public mutable methods: List[Method];
         public mutable types: List[Type.Define];
+        public mutable scope: Scope.Module;
         
         public this(name: string) {
             this.name = name;
@@ -421,6 +421,7 @@ namespace Atla.Lang.Hir
     public class Assembly: HasModules {
         public name: string;
         public fileName: string;
+        public mutable scope: Scope.Global;
         
         public this(name: string, fileName: string) {
             this.name = name;

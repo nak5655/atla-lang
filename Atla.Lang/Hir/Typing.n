@@ -15,27 +15,22 @@ namespace Atla.Lang.Hir
 {
     public class Typing
     {
+        public typing(hir: Hir.Assembly): void {
+            foreach (mod in hir.modules.Values) {
+                typing(mod);
+            }
+        }
+        
         public typing(hir: Hir.Module): void {
+            
             foreach (import in hir.imports) {
-                // TODO: import atla module (non Native)
                 def sysType = System.Type.GetType(import.dotted());
                 if (sysType != null) {
                     def type = Type.Native(sysType);
-                    // declare short name (e.g. "System.String" is declared as "String")
-                    when (!import.path.IsEmpty()) {
-                        hir.scope.declareType(import.path.Last(), type);
-                    }
+                    _ = hir.scope.resolveType(import.path.Last()).unify(type);
                 } else {
-                    // TODO importエラー
+                    // TODO atlaモジュールを探す or .NETアセンブリを探す
                 }
-            }
-            
-            // first, declare members
-            foreach (ty in hir.types) {
-                declareTypes(hir.scope, ty);
-            }
-            foreach (method in hir.methods) {
-                _ = hir.scope.declareLocal(method.name, method.fn.type)
             }
             
             // next, analyze the type hints.
@@ -44,26 +39,6 @@ namespace Atla.Lang.Hir
             }
             foreach (method in hir.methods) {
                 typing(hir.scope, method.fn, Type.Unknown());
-            }
-        }
-        
-        // 再帰的に型を探して宣言する
-        // TODO 型の入れ子 と 匿名型
-        public declareTypes(scope: Scope, hir: Atla.Lang.Type.Define): void {
-            scope.declareType(hir.name, hir);
-            
-            // コンストラクタ
-            _ = scope.declareLocal(hir.name, Type.Fn(hir.fields.Map(_.type), hir));
-            
-            // フィールド
-            foreach (field in hir.fields) {
-                def sym = hir.scope.declareLocal(field.name, field.type);
-                field.setSymbol(sym);
-            }
-            
-            // メソッド
-            foreach (method in hir.methods) {
-                _ = hir.scope.declareLocal(method.name, method.fn.type);
             }
         }
         
@@ -109,9 +84,9 @@ namespace Atla.Lang.Hir
                         | it is Type.Fn => it
                         | _ => Type.Fn(args.Map(_ => Type.Var()), Type.Var())
                     }
-                    // 引数を関数本体で宣言
-                    foreach ((arg, t) in args.Zip(fnType.args)) {
-                        bodyScope.declareArg(arg.name, t);
+                    // 引数の型推論
+                    foreach (i in Enumerable.Range(0, fnType.args.Count())) {
+                        _ = bodyScope.resolveArgNth(i).Value.type.unify(fnType.args.Nth(i));
                     }
                     _ = bodyScope.retType.unify(fnType.ret);
                     typing(bodyScope, body, fnType.ret);
