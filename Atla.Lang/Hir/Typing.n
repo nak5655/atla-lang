@@ -212,7 +212,12 @@ namespace Atla.Lang.Hir
             match (hir) {
                 | Hir.Stmt.Var(id, rhs, _) => {
                     typing(scope, rhs, Type.Unknown()); // TODO type hint
-                    id.symbolCache = Some(scope.declareLocal(id.name, rhs.type)); // 右辺を処理してから変数宣言
+                    match (id.getSymbol(scope)) { // Analyzeでスコープに宣言されているはず
+                        | Some(dest) => {
+                            _ = dest.type.unify(rhs.type)
+                        }
+                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(id.name, rhs.type))
+                    }
                 }
                 | Hir.Stmt.Assign(id, rhs) => {
                     typing(scope, rhs, Type.Unknown());

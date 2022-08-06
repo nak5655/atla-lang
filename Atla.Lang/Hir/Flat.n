@@ -97,14 +97,20 @@ namespace Atla.Lang.Hir
                     block.scope = Scope.Block(s);
                     
                     // クラスのインスタンスの名前
-                    def fClassInst = block.scope.declareLocal(getUniqueTempName(), fClass);
+                    def fClassInstName = getUniqueTempName();
+                    def fClassInstId(): Expr.Id {
+                        def id = Hir.Expr.Id(fClassInstName);
+                        id.type.unify(fClass);
+                        id
+                    }
                     
                     block.stmts.AddRange([
                         // コンストラクタ呼び出し
-                        Hir.Stmt.Var(Hir.Expr.Id(fClassInst), Hir.Expr.Apply(Hir.Expr.Id(fClass.name), freeVars.Map((_, sym) => Hir.Expr.Id(sym))), false),
+                        Hir.Stmt.Var(fClassInstId(), Hir.Expr.Apply(Hir.Expr.Id(fClass.name), freeVars.Map((_, sym) => Hir.Expr.Id(sym))), false),
                         // 関数を返す
-                        Hir.Stmt.Expr(Hir.Expr.Member(Hir.Expr.Id(fClassInst), met.name)),
+                        Hir.Stmt.Expr(Hir.Expr.Member(fClassInstId(), met.name)),
                     ]);
+                    Analyze().analyze(s, block); // スコープ構築
                     Typing().typing(s, block, e.type); // 型推論
                     block
                 }

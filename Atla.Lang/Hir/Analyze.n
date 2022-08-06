@@ -25,7 +25,10 @@ namespace Atla.Lang.Hir
         
         public analyze(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
-                | Var as v => analyze(scope, v.expr);
+                | Var as v => {
+                    scope.declareLocal(v.id.name, v.expr.type);
+                    analyze(scope, v.expr);
+                }
                 | Assign as s => analyze(scope, s.expr);
                 | Expr as e => analyze(scope, e.expr);
                 | Return as r => analyze(scope, r.expr);

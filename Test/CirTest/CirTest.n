@@ -14,53 +14,40 @@ namespace Test.CirTest
     [TestFixture]
     class CirTest
     {
-        [Test]
-        public CirHelloTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Hello.exe"));
+        codeTest(caseName: string): void {
+            def caseFileName = $"$caseName.atla";
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile($"CirTest_$caseName.exe"));
             asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
-            def code = Misc.readCase("hello.atla");
+            def code = Misc.readCase(caseFileName);
             _ = Misc.compiler.updateModule(asm, "main", code);
             Misc.compiler.compileHirToThir(asm);
             
+            def mir = Misc.compiler.compileHirToMir(asm).Value;
             def _cir = Misc.compiler.compileMirToCir(Misc.compiler.compileHirToMir(asm).Value);
             def cir = _cir.Value;
             
-            Assert.AreEqual(1, cir.modules.First().methods.Count());
-            
             Atla.Lang.Cir.Emit().emit(cir);
+        }
+        
+        [Test]
+        public CirHelloTest(): void {
+            codeTest("hello")
         }
         
         [Test]
         public CirFibonacciTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Fibonacci.exe"));
-            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
-            
-            def code = Misc.readCase("fibonacci.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
-            
-            def mir = Misc.compiler.compileHirToMir(asm).Value;
-            def _cir = Misc.compiler.compileMirToCir(Misc.compiler.compileHirToMir(asm).Value);
-            def cir = _cir.Value;
-            
-            Atla.Lang.Cir.Emit().emit(cir);
+            codeTest("fibonacci")
         }
         
         [Test]
         public CirGeometryTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("CirTest_Geometry.exe"));
-            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
-            
-            def code = Misc.readCase("geometry.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
-            
-            def mir = Misc.compiler.compileHirToMir(asm).Value;
-            def _cir = Misc.compiler.compileMirToCir(Misc.compiler.compileHirToMir(asm).Value);
-            def cir = _cir.Value;
-            
-            Atla.Lang.Cir.Emit().emit(cir);
+            codeTest("geometry")
+        }
+        
+        [Test]
+        public CirCountUpTest(): void {
+            codeTest("countup")
         }
         
         //[Test]

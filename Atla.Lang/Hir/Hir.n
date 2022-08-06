@@ -63,8 +63,8 @@ namespace Atla.Lang.Hir
     
     public variant Stmt: HasSpan[Stmt], HasExpr {
         | Expr { mutable expr: Hir.Expr }
-        | Var { id: Hir.Expr.Id; mutable expr: Hir.Expr; isMut: bool; }
-        | Assign { id: Hir.Expr.Id; mutable expr: Hir.Expr }
+        | Var { mutable id: Hir.Expr.Id; mutable expr: Hir.Expr; isMut: bool; }
+        | Assign { mutable id: Hir.Expr.Id; mutable expr: Hir.Expr }
         | Return { mutable expr: Hir.Expr }
         
         public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
