@@ -33,7 +33,7 @@ namespace Atla.Lang
                             }
                             
                             // パスの分割
-                            def path = modulePath.Split(Consts.MODULE_SEP.ToArray());
+                            def path = modulePath.Split([Consts.MODULE_SEP].ToArray(), System.StringSplitOptions.None);
                             
                             // モジュールを変換
                             def rhir = Atla.Lang.Ast.Trans().trans(ast, path.Last());
@@ -74,6 +74,7 @@ namespace Atla.Lang
         }
         
         public compileHirToThir(asm: Hir.Assembly): void {
+            Atla.Lang.Hir.Link().link(asm);
             Atla.Lang.Hir.Typing().typing(asm);
             def typingProblems = asm.scanErrors();
             when (typingProblems.Count() > 0) {

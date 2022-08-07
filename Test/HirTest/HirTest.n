@@ -91,64 +91,58 @@ namespace Test.HirTest
             Assert.AreEqual(typeof(int), (fnType.ret :> Type.Native).type);
         }
         
-        [Test]
-        public HirFibonacciTypingTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+        codeTest(caseName: string): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile($"HirTest_$caseName.exe"));
             asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
-            def code = Misc.readCase("fibonacci.atla");
+            def code = Misc.readCase($"$caseName.atla");
             _ = Misc.compiler.updateModule(asm, "main", code).Value;
             Misc.compiler.compileHirToThir(asm);
             
             def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
+        }
+        
+        [Test]
+        public HirFibonacciTypingTest(): void {
+            codeTest("fibonacci")
         }
         
         [Test]
         public HirCountUpTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
-            asm.scope = Scope.Assembly(Scope.Global(), asm.name);
-            
-            def code = Misc.readCase("countup.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code).Value;
-            Misc.compiler.compileHirToThir(asm);
-            
-            def errors = asm.scanErrors().Distinct().ToList();
-            Assert.AreEqual(0, errors.Count());
+            codeTest("countup")
         }
         
         [Test]
         public HirGeometryTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
+            codeTest("geometry")
+        }
+        
+        [Test]
+        public HirSubModuleTest(): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest_module.exe"));
             asm.scope = Scope.Assembly(Scope.Global(), asm.name);
             
-            def code = Misc.readCase("geometry.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code).Value;
+            { // main
+                def code = Misc.readCase("ModuleMain.atla");
+                def hir = Misc.compiler.updateModule(asm, "Main", code).Value;
+            
+                def errors = hir.scanErrors().Distinct().ToList();
+                Assert.AreEqual(0, errors.Count());
+            }
+            
+            { // sub
+                def code = Misc.readCase("Sub/Greet.atla");
+                def hir = Misc.compiler.updateModule(asm, "Sub::Greet", code).Value;
+            
+                def errors = hir.scanErrors().Distinct().ToList();
+                Assert.AreEqual(0, errors.Count());
+            }
+            
             Misc.compiler.compileHirToThir(asm);
             
             def errors = asm.scanErrors().Distinct().ToList();
             Assert.AreEqual(0, errors.Count());
         }
-        
-        //[Test]
-        //public HirSubModuleTest(): void {
-        //    def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("HirTest.exe"));
-        //    
-        //    { // main
-        //        def code = Misc.readCase("ModuleMain.atla");
-        //        def thir = Misc.compiler.updateModule(asm, "main", code).Value;
-        //    
-        //        def errors = thir.scanErrors().Distinct().ToList();
-        //        Assert.AreEqual(0, errors.Count());
-        //    }
-        //    
-        //    { // main
-        //        def code = Misc.readCase("Sub/Greet.atla");
-        //        def thir = Misc.compiler.updateModule(asm, "greet", code).Value;
-        //    
-        //        def errors = thir.scanErrors().Distinct().ToList();
-        //        Assert.AreEqual(0, errors.Count());
-        //    }
-        //}
     }
 }

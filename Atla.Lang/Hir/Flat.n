@@ -44,6 +44,7 @@ namespace Atla.Lang.Hir
                     closure.body = f.body;
                     
                     // クロージャー内の自由変数を置換しながら列挙
+                    // TODO Assignの置換
                     def freeVars: List[string * Symbol] = List(); // 新たなフィールド名 * 元のシンボル
                     closure.body.replaceExpr(f.scope, (s, e) => match (e) {
                         | Hir.Expr.Id as it => match (it.getSymbol(s)) {

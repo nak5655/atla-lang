@@ -24,5 +24,14 @@ namespace Test.TypeTest
             a.unify(b);
             Assert.AreEqual(a.instance, b);
         }
+        
+        [Test]
+        public TypeOneOfUnifyTest(): void {
+            def a = Type.Var(Type.Fn([Type.Var(Type.OneOf([Type.Native(typeof(double))]))], Type.Unknown()));
+            def b = Type.OneOf([Type.Fn([Type.Native(typeof(double))], Type.Native(typeof(void)))]);
+            
+            a.unify(b);
+            Assert.AreEqual(Type.Native(typeof(double)), (a.pruned() :> Type.Fn).args.First());
+        }
     }
 }

@@ -18,24 +18,23 @@ using Atla.Lang;
 namespace Atla.Lang
 {
     public variant TypeError {
-        | Undefined {
-            name: string;
-            
-            public override ToString(): string {
-                $"Type $name is not defined."
-            }
-        }
+        | Undefined { name: string; }
         | RecursiveReference { a: Type; b: Type }
         | Ambiguous { types: list[Type] }
-        | UnificationFailure {
-            refered: Type; referer: Type;
-            
-            public override ToString(): string {
-                $"Could not unify type $refered and $referer."
-            }
-        }
+        | UnificationFailure { refered: Type; referer: Type; }
         | InferenceUnmatched { types: list[Type] }
         | InferenceFailure { message: string }
+        
+        override public ToString(): string {
+            match (this) {
+                | Undefined as e => $"UndefinedType: $(e.name)"
+                | RecursiveReference as e => $"RecursiveReference: $(e.a) and $(e.b)."
+                | Ambiguous as e => $"AmbiguousType: $(e.types.joinToString(\", \"))."
+                | UnificationFailure as e => $"UnificationFailure: $(e.refered) and $(e.referer)."
+                | InferenceUnmatched as e => $"InferenceUnmatched: $(e.types.joinToString(\", \"))."
+                | InferenceFailure as e => $"InferenceFailure: $(e.message)"
+            }
+        }
     }
     
     public interface TypeScope {
@@ -264,7 +263,7 @@ namespace Atla.Lang
                     it
                 }
                 | (_, OneOf(ts) as it) => {
-                    it.types = ts.Filter(_.canUnify(other));
+                    it.types = ts.Filter(_.canUnify(this));
                     it
                 }
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.unify(y)), b.unify(d))
@@ -373,6 +372,10 @@ namespace Atla.Lang
                 }
             }
             _systemType
+        }
+        
+        public static fromSystemType(t: System.Type): Type {
+            Native(t)
         }
         
         public override GetHashCode() : int {

@@ -15,6 +15,10 @@ namespace Atla.Lang
     }
     
     public module ListMiscExtensions {
+        public joinModulePath(names: IEnumerable[string]): string {
+            names.joinToString(Consts.MODULE_SEP)
+        }
+    
         public joinToString[T](this values: IEnumerable[T], sep: string): string {
             def sb = StringBuilder();
             when (values.Count() > 0) {

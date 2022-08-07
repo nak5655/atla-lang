@@ -120,12 +120,14 @@
       <SubType>Content</SubType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <Content Include="cases\ModuleMain.atla">
+    <None Include="cases\ModuleMain.atla">
       <SubType>Content</SubType>
-    </Content>
-    <Content Include="cases\Sub\Greet.atla">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="cases\Sub\Greet.atla">
       <SubType>Content</SubType>
-    </Content>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <Content Include="packages.config">
       <SubType>Content</SubType>
     </Content>

@@ -92,11 +92,8 @@ namespace Atla.Lang.Hir
                 analyze(hir.scope, mod);
             }
             
-            // まだimport先が定義されてない可能性があるので型変数だけ宣言しておく
-            foreach (import in hir.imports) {
-                // declare short name (e.g. "System.String" is declared as "String")
-                hir.scope.declareType(import.path.Last(), Type.Var());
-            }
+            // importはまだ処理できない(importするのがTypeなのかModuleなのか区別できないので)
+            // -> Link
             
             foreach (ty in hir.types) {
                 hir.scope.declareType(ty.name, ty);

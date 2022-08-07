@@ -30,10 +30,6 @@ namespace Atla.Lang.Hir
         | DuplicatedDeclaration { name: string; type: Atla.Lang.Type; already: Atla.Lang.Type }
         | UndefinedReference {
             name: string; type: Atla.Lang.Type;
-            
-            public override ToString(): string {
-                $"Undefined variable. $name: $type"
-            }
         }
         | Type {
             value: TypeError;
@@ -50,6 +46,15 @@ namespace Atla.Lang.Hir
             }
         }
         | Syntax { message: string }
+        
+        override public ToString(): string {
+            match (this) {
+                | IllegalIndentation as e => $"IllegalIndentation: $(e.message)"
+                | DuplicatedDeclaration as e => $"DuplicatedDeclaration: Cannot declare $(e.name) as $(e.type), it was already declared as $(e.already)."
+                | UndefinedReference as e => $"UndefinedReference: $(e.name) is not declared as $(e.type)."
+                | Type as e => $"TypeError: $(e.value)"
+            }
+        }
     }
     
     public variant Pattern: HasSpan[Pattern] {
@@ -314,6 +319,11 @@ namespace Atla.Lang.Hir
     [Record]
     public class Import {
         public path: list[string];
+        public mutable value: ImportValue; // Linkで書き込み
+        
+        public this(path: list[string]) {
+            this.path = path;
+        }
         
         public dotted(): string {
             def sb = System.Text.StringBuilder();
@@ -362,10 +372,10 @@ namespace Atla.Lang.Hir
     }
     
     public abstract class HasModules {
-        public mutable modules: Hashtable[string, Module] = Hashtable();
+        public mutable modules: Hashtable[string, Atla.Lang.Hir.Module] = Hashtable();
         
         // モジュールの作成（パスの途中のモジュールも無ければ作られる）すでにあるならそれを返す
-        public updateModule(modulePath: IEnumerable[string], mod: Module): void {
+        public updateModule(modulePath: IEnumerable[string], mod: Atla.Lang.Hir.Module): void {
             if (modulePath.Count() == 0)
                 throw Exception("module path must not be empty.")
             else {
@@ -385,6 +395,29 @@ namespace Atla.Lang.Hir
                     }
                     def nextParent = modules[nextParentName];
                     nextParent.updateModule(modulePath.Skip(1), mod)
+                }
+            }
+        }
+        
+        public findModule(modulePath: IEnumerable[string]): option[Hir.Module] {
+            if (modulePath.Count() == 0)
+                None()
+            else {
+                if (modulePath.Count() == 1) {
+                    def moduleName = modulePath.First();
+                    if (modules.ContainsKey(moduleName)) {
+                        Some(modules[moduleName])
+                    } else {
+                        None()
+                    }
+                } else {
+                    def nextParentName = modulePath.First();
+                    if (!modules.ContainsKey(nextParentName)) {
+                        None()
+                    } else {
+                        def nextParent = modules[nextParentName];
+                        nextParent.findModule(modulePath.Skip(1))
+                    }
                 }
             }
         }

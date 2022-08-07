@@ -1,0 +1,49 @@
+﻿using Nemerle;
+using Nemerle.Collections;
+using Nemerle.Text;
+using Nemerle.Utility;
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using Atla.Lang.ListMiscExtensions;
+
+namespace Atla.Lang.Hir
+{
+    public variant ImportValue {
+        | Type { type: Atla.Lang.Type }
+        | NativeType { type: System.Type }
+        | Module { mod: Hir.Module }
+        | NativeModule { mod: System.Reflection.Module }
+    }
+    
+    public class Link
+    {
+        mutable asm: Hir.Assembly;
+        
+        public link(asm: Hir.Assembly): void {
+            this.asm = asm;
+            
+            foreach (mod in asm.modules.Values) {
+                link(mod);
+            }
+        }
+        
+        link(mod: Hir.Module): void {
+            foreach (import in mod.imports) {
+                def sysType = System.Type.GetType(import.dotted());
+                if (sysType != null) {
+                    // 外部
+                    mod.scope.import(import.path.Last(), ImportValue.NativeType(sysType));
+                } else {
+                    // Assembly内の子モジュール
+                    match (asm.findModule(import.path)) {
+                        | Some(m) => mod.scope.import(import.path.Last(), ImportValue.Module(m))
+                        | _ => ()
+                    }
+                }
+            }
+        }
+    }
+}

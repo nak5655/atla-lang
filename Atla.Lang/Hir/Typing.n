@@ -13,6 +13,7 @@ using Atla.Lang;
 
 namespace Atla.Lang.Hir
 {
+    // 同じHIRに対して複数回呼ばれてもいいように実装する(スコープをいじらない)
     public class Typing
     {
         public typing(hir: Hir.Assembly): void {
@@ -22,17 +23,6 @@ namespace Atla.Lang.Hir
         }
         
         public typing(hir: Hir.Module): void {
-            
-            foreach (import in hir.imports) {
-                def sysType = System.Type.GetType(import.dotted());
-                if (sysType != null) {
-                    def type = Type.Native(sysType);
-                    _ = hir.scope.resolveType(import.path.Last()).unify(type);
-                } else {
-                    // TODO atlaモジュールを探す or .NETアセンブリを探す
-                }
-            }
-            
             // next, analyze the type hints.
             foreach (ty in hir.types) {
                 typing(hir.scope, ty);
@@ -138,41 +128,44 @@ namespace Atla.Lang.Hir
                     _ = hir.type.unify(ty);
                 }
                 | StaticMember(tyName, name) => {
+                    def resolveMembers(members: IEnumerable[string * Type]) {
+                        def ts = members.Filter((n, _) => n == name).Map((_, t) => t);
+                        if (ts.Count() == 1) {
+                            _ = hir.type.unify(ts.First())
+                        } else if (ts.IsEmpty()) {
+                            hir.type.errors.Add(TypeError.InferenceFailure($"Could not resolve $tyName::$name as $(hir.type.pruned())"))
+                        } else {
+                            _ = hir.type.unify(Type.OneOf(ts.NToList()))
+                        }
+                    }
+                    
                     mutable ty = scope.resolveType(tyName);
                     match (ty.pruned()) {
                         | Type.Define as cls => {
-                            def es = cls.methods.Map(m => m.fn.type).Filter(_.canUnify(hir.type))
-                                .Concat(cls.fields.Map(_.type).Filter(_.canUnify(hir.type)))
-                                .NToList();
-                            if (es.Length == 1) {
-                                _ = hir.type.unify(es.First())
-                            } else if (es.IsEmpty()) {
-                                hir.type.errors.Add(TypeError.InferenceFailure($"Could not resolve $tyName::$name as $(hir.type.pruned())"))
-                            } else {
-                               _ = hir.type.unify(Type.OneOf(es))
-                            }
+                            def ms = cls.methods.Map(m => (m.name , m.fn.type));
+                            def fs = cls.fields.Map(fi => (fi.name, fi.type));
+                            resolveMembers(ms.Concat(fs));
                         }
                         | Type.Native(nt) => {
-                            // TODO クラス変数
-                            def overloads = nt.GetMethods().Filter(methodInfo => {
-                                if (methodInfo.Name == name) {
-                                    match (hir.type.pruned()) {
-                                        | it is Type.Fn => it.canUnify(methodInfo.toFnType(scope))
-                                        | _ => true
-                                    }
-                                } else {
-                                    false
+                            def ms = nt.GetMethods().Map(methodInfo => (methodInfo.Name, methodInfo.toFnType(scope)));
+                            def fs = nt.GetFields().Filter(fi => fi.IsStatic).Map(fieldInfo => (fieldInfo.Name, Type.fromSystemType(fieldInfo.GetType())));
+                            resolveMembers(ms.Concat(fs));
+                        }
+                        | _ => {
+                            // モジュールの可能性
+                            match (scope.resolveModule(tyName)) {
+                                | Some(Either.Left(Hir.Module as m)) => {
+                                    def ms = m.methods.Map(method => (method.name, method.fn.type));
+                                    resolveMembers(ms); // TODO フィールド?
                                 }
-                            });
-                            if (overloads.Length == 1) {
-                                _ = hir.type.unify(overloads.First().toFnType(scope))
-                            } else if (overloads.Length > 1) {
-                                _ = hir.type.unify(Type.OneOf(overloads.Map(m => m.toFnType(scope))))
-                            } else {
-                                hir.type.errors.Add(TypeError.InferenceFailure($"Could not resolve $tyName::$name as $(hir.type.pruned())"))
+                                | Some(Either.Right(System.Reflection.Module as m)) => {
+                                    def ms = m.GetMethods().Map(methodInfo => (methodInfo.Name, methodInfo.toFnType(scope)));
+                                    def fs = m.GetFields().Filter(fi => fi.IsStatic).Map(fieldInfo => (fieldInfo.Name, Type.fromSystemType(fieldInfo.GetType())));
+                                    resolveMembers(ms.Concat(fs));
+                                }
+                                | _ => hir.type.errors.Add(TypeError.Undefined(tyName))
                             }
                         }
-                        | _ => hir.type.errors.Add(TypeError.Undefined(tyName))
                     }
                 }
                 | Apply(fn, args) => {

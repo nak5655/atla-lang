@@ -128,6 +128,7 @@ namespace Atla.Lang.Hir
         public varTable: List[Symbol] = List();
         typeTable: Hashtable[string, Atla.Lang.Type] = Hashtable();
         implTable: Hashtable[string, Impl] = Hashtable();
+        importTable: Hashtable[string, ImportValue] = Hashtable();
         public mutable depth: int;
         
         public getParent(): option[Scope] {
@@ -190,13 +191,21 @@ namespace Atla.Lang.Hir
         }
         
         public resolveType(id: string): Atla.Lang.Type {
-            if (typeTable.ContainsKey(id)) {
-                typeTable.Get(id).Value
-            } else {
-                match (getParent()) {
-                    | Some(p) => p.resolveType(id)
-                    | _ => Atla.Lang.Type.Error(TypeError.Undefined(id))
+            when (typeTable.ContainsKey(id)) {
+                return typeTable.Get(id).Value;
+            }
+            
+            when (importTable.ContainsKey(id)) {
+                match (importTable.Get(id).Value) {
+                    | ImportValue.Type(t) => return t
+                    | ImportValue.NativeType(t) => return Type.Native(t)
+                    | _ => ()
                 }
+            }
+            
+            match (getParent()) {
+                | Some(p) => p.resolveType(id)
+                | _ => Atla.Lang.Type.Error(TypeError.Undefined(id))
             }
         }
         
@@ -217,6 +226,25 @@ namespace Atla.Lang.Hir
                 }
             } else {
                 syms // overloadなどで複数にマッチしてもいい
+            }
+        }
+        
+        public import(name: string, value: ImportValue): void {
+            importTable[name] = value;
+        }
+        
+        public resolveModule(id: string): option[Either[Atla.Lang.Hir.Module, System.Reflection.Module]] {
+            when (importTable.ContainsKey(id)) {
+                match (importTable.Get(id).Value) {
+                    | ImportValue.Module(m) => return Some(Either.Left(m))
+                    | ImportValue.NativeModule(m) => return Some(Either.Right(m))
+                    | _ => ()
+                }
+            }
+            
+            match (getParent()) {
+                | Some(p) => p.resolveModule(id)
+                | _ => None()
             }
         }
     }

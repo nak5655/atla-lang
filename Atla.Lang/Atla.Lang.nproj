@@ -74,6 +74,9 @@
     <Compile Include="Hir\Flat.n">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Hir\Link.n">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="Mir\Mir.n">
       <SubType>Code</SubType>
     </Compile>

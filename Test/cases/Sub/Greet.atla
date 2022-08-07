@@ -1,6 +1,6 @@
 ﻿import System::Console
 
-fn greet (name: string) = do
+fn greet (name: string): Unit = do
     Console.Write "Hello, "
     Console.Write name
-	Console.WriteLine "!"
+    Console.WriteLine "!"
