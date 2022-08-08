@@ -12,6 +12,7 @@ using System.Reflection;
 using Atla.Lang;
 using Atla.Lang.Hir;
 using Atla.Lang.Mir;
+using Atla.Lang.Parse;
 
 // K正規化
 // TODO Mir.from に変更(HIRがMIRの詳細に依存すべきではない)
@@ -33,7 +34,7 @@ namespace Atla.Lang.Hir
     // TODO Symbolがすでに一意に決まっていればHir.Scopeいらない?
     public class Trans
     {
-        getCallable(frame: Frame, scope: Hir.Scope, hir: Hir.Expr): Result[Callable] {
+        getCallable(frame: Frame, scope: Hir.Scope, hir: Hir.Expr): Result[Callable, Problem] {
             match (hir) {
                 | Hir.Expr.Id as id => {
                     def ty = hir.type.pruned();
@@ -44,10 +45,10 @@ namespace Atla.Lang.Hir
                             | SymbolKind.Constructor(ci) => Result.Success(Callable.Constructor(ci))
                             | _ => match (ty) {
                                 | Atla.Lang.Type.Fn => Result.Success(Callable.MethodInfo(ty.ToSystemType().GetMethod("Invoke"))) // System.Func.Invoke や System.Action.Invoke など
-                                | _ => Result.Failure($"$hir is not a function.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"$hir is not a function.", Span.zero()))
                             }
                         }
-                        | _ => Result.Failure($"$hir is not a function.")
+                        | _ => Result.Failure(Problem(Severity.Error, $"$hir is not a function.", Span.zero()))
                     }
                 }
                 | Hir.Expr.Member(expr, name) => {
@@ -63,7 +64,7 @@ namespace Atla.Lang.Hir
                                     }
                                     def methods = define.methods.Filter(method => method.name == name && method.fn.type.canUnify(fnType));
                                     if (methods.Count() == 0) {
-                                        Result.Failure($"Could not find a member $name in $define.")
+                                        Result.Failure(Problem(Severity.Error, $"Could not find a member $name in $define.", expr.span))
                                     } else {
                                         Result.Success(Callable.InstanceMethod(proc, inst, methods.First().info.Value))
                                     }
@@ -78,12 +79,12 @@ namespace Atla.Lang.Hir
                                     if (method != null)
                                         Result.Success(Callable.InstanceMethod(proc, inst, method))
                                     else
-                                        Result.Failure($"Could not find method $name in $t.")
+                                        Result.Failure(Problem(Severity.Error, $"Could not find method $name in $t.", expr.span))
                                 }
-                                | _ => Result.Failure($"$instTy has no members.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"$instTy has no members.", expr.span))
                             }
                         }
-                        | _ => Result.Failure($"$expr has no value.")
+                        | _ => Result.Failure(Problem(Severity.Error, $"$expr has no value.", expr.span))
                     })
                 }
                 | Hir.Expr.StaticMember(clsName, name) => {
@@ -103,7 +104,7 @@ namespace Atla.Lang.Hir
                             if (mi.IsSome) {
                                 Result.Success(Callable.MethodInfo(mi.Value))
                             } else {
-                                Result.Failure("$hir does not exist.")
+                                Result.Failure(Problem(Severity.Error, "$hir does not exist.", hir.span))
                             }
                         }
                         // TODO
@@ -112,11 +113,11 @@ namespace Atla.Lang.Hir
             }
         }
         
-        public trans(frame: Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins]] {
+        public trans(frame: Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins], Problem] {
             match (hir) {
                 | Hir.Stmt.Expr(e) => trans(frame, scope, e).bind(a: KNormal => match (a) {
                     | KNormal(proc, _) => Result.Success(proc)
-                    | _ => Result.Failure($"Could not interpret $e as a value.")
+                    | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", hir.span))
                 })
                 | Hir.Stmt.Var(id, expr, _) => {
                     match (id.getSymbol(scope)) {
@@ -127,13 +128,13 @@ namespace Atla.Lang.Hir
                                 def re = trans(frame, scope, expr);
                                 re.bind(kn => match (kn) {
                                     | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(sym, res)]))
-                                    | _ => Result.Failure($"$expr has no value.")
+                                    | _ => Result.Failure(Problem(Severity.Error, $"$expr has no value.", expr.span))
                                 })
                             } else {
-                                Result.Failure($"$(id.name) is not declared as local variable.")
+                                Result.Failure(Problem(Severity.Error, $"$(id.name) is not declared as local variable.", id.span))
                             }
                         }
-                        | _ => Result.Failure($"$(id.name) does not exist in scope.")
+                        | _ => Result.Failure(Problem(Severity.Error, $"$(id.name) does not exist in scope.", id.span))
                     }
                 }
                 | Hir.Stmt.Assign(id, expr) => {
@@ -142,10 +143,10 @@ namespace Atla.Lang.Hir
                             def re = trans(frame, scope, expr);
                             re.bind(kn => match (kn) {
                                 | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(sym, res)]))
-                                | _ => Result.Failure($"$expr has no value.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"$expr has no value.", expr.span))
                             })
                         }
-                        | _ => Result.Failure($"$(id.name) does not exist in scope.")
+                        | _ => Result.Failure(Problem(Severity.Error, $"$(id.name) does not exist in scope.", id.span))
                     }
                 }
                 | Hir.Stmt.Return(e) => {
@@ -156,23 +157,23 @@ namespace Atla.Lang.Hir
                                 // ブロックスコープならReturnじゃなくてJumpする
                                 | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(it.retSymbol, res), Mir.Ins.Jump(it.endLabel)]))
                                 | KNormal(proc, _) => Result.Success(proc.Concat([Mir.Ins.Jump(it.endLabel)]))
-                                | _ => Result.Failure($"Could not interpret $e as a value.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", e.span))
                             })
                             | Hir.Scope.Fn => _ = trans(frame, scope, e).bind(a: KNormal => match (a) {
                                 | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.RetValue(res)]))
                                 | KNormal(proc, _) => Result.Success(proc.Concat([Mir.Ins.Ret()]))
-                                | _ => Result.Failure($"Could not interpret $e as a value.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", e.span))
                             })
                             | _ => {}
                         }
                     }
-                    Result.Failure($"Could not find the return destination. $hir")
+                    Result.Failure(Problem(Severity.Error, $"Could not find the return destination. $hir", hir.span))
                 }
                 // TODO
             }
         }
         
-        public trans(frame: Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormal] {
+        public trans(frame: Frame, scope: Hir.Scope, hir: Hir.Expr): Result[KNormal, Problem] {
             match (hir) {
                 // TODO
                 | Hir.Expr.Unit => Result.Success(KNormal([], None())) // TODO Unit Singleton
@@ -185,11 +186,11 @@ namespace Atla.Lang.Hir
                         | Some(sym) => match (sym.kind) {
                             | SymbolKind.Arg =>  match (NCollectionsExtensions.Find(frame.args, arg => arg.name == sym.name)) { // 同じ名前の引数はないので名前が一致すればいい
                                 | Some(arg) => Result.Success(KNormal([], Some(Mir.Value.Sym(arg))))
-                                | None => Result.Failure($"Could not find $name in arguments.")
+                                | None => Result.Failure(Problem(Severity.Error, $"Could not find $name in arguments.", hir.span))
                             }
                             | SymbolKind.Local => match (NCollectionsExtensions.Find(frame.locs, loc => loc.name == sym.name && loc.type.canUnify(sym.type))) { // TODO 同値比較でいい?(symをそのままつかえばいい?)
                                 | Some(loc) => Result.Success(KNormal([], Some(Mir.Value.Sym(loc))))
-                                | None => Result.Failure($"Could not find $name in locals.")
+                                | None => Result.Failure(Problem(Severity.Error, $"Could not find $name in locals.", hir.span))
                             }
                             | SymbolKind.Field as fi => {
                                 def insts = scope.resolveVar("this", Type.Unknown()); // TODO 型情報がないので不安
@@ -197,11 +198,11 @@ namespace Atla.Lang.Hir
                                     def thisSymbol = insts.First();
                                     Result.Success(KNormal([], Some(Mir.Value.Field(thisSymbol, fi.fieldInfo))))
                                 } else {
-                                    Result.Failure("Could not find an instance named \"this\" in locals.")
+                                    Result.Failure(Problem(Severity.Error, "Could not find an instance named \"this\" in locals.", hir.span))
                                 }
                             }
                         }
-                        | _ => Result.Failure($"$name is not defined as $(id.type) type.")
+                        | _ => Result.Failure(Problem(Severity.Error, $"$name is not defined as $(id.type) type.", hir.span))
                     }
                 }
                 | Hir.Expr.Member(expr, name) => {
@@ -244,16 +245,16 @@ namespace Atla.Lang.Hir
                                     if (fi != null)
                                         Result.Success(KNormal(proc.Concat([Mir.Ins.Assign(sym, val)]), Some(Mir.Value.Field(sym, fi))))
                                     else
-                                        Result.Failure($"Could not find field $name in $ty.")
+                                        Result.Failure(Problem(Severity.Error, $"Could not find field $name in $ty.", hir.span))
                                 }
                                 | Some(Either.Right(mi)) => {
                                     def sym = frame.declareTemp(Type.Native(mi.ReturnType));
                                     Result.Success(KNormal(proc.Concat([Mir.Ins.CallAssign(sym, mi, [val])]), Some(Mir.Value.Sym(sym))))
                                 }
-                                | _ => Result.Failure($"Could not find field $name in $ty.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"Could not find field $name in $ty.", hir.span))
                             }
                         }
-                        | Result.Success(_) => Result.Failure($"Could not interpret $expr as a value.")
+                        | Result.Success(_) => Result.Failure(Problem(Severity.Error, $"Could not interpret $expr as a value.", hir.span))
                         | Result.Failure(e) => Result.Failure(e)
                     }
                 }
@@ -299,7 +300,7 @@ namespace Atla.Lang.Hir
                                     };
                                     Result.Success(KNormal(procArgs.Concat(body), Some(Mir.Value.Sym(tmp))))
                                 }
-                                | _ => Result.Failure($"$fn must be a function.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"$fn must be a function.", fn.span))
                             }
                         }
                         | Result.Success(Callable.Constructor(ci)) => {
@@ -309,7 +310,7 @@ namespace Atla.Lang.Hir
                             
                                     Result.Success(KNormal(procArgs.Concat([Mir.Ins.New(tmp, ci, resArgs)]), Some(Mir.Value.Sym(tmp))))
                                 }
-                                | _ => Result.Failure($"$fn must be a function.")
+                                | _ => Result.Failure(Problem(Severity.Error, $"$fn must be a function.", fn.span))
                             }
                         }
                         | Result.Failure(e) => Result.Failure(e)
@@ -385,7 +386,7 @@ namespace Atla.Lang.Hir
                             | KNormal(proc, Some(res)) => Result.Success(acc.Concat(proc).Concat([
                                 Mir.Ins.JumpTrue(res, label)
                             ]))
-                            | _ => Result.Failure($"Switch Predicate $ent.pred is not a Value.")
+                            | _ => Result.Failure(Problem(Severity.Error, $"Switch Predicate $ent.pred is not a Value.", ent.span))
                         }));
                     }
                     
@@ -401,7 +402,7 @@ namespace Atla.Lang.Hir
                                     Mir.Ins.Jump(endLabel), // 分岐の終わりまでジャンプ
                                 ]))
                             }
-                            | _ => Result.Failure($"Switch Entry $ent should return a Value.")
+                            | _ => Result.Failure(Problem(Severity.Error, $"Switch Entry $ent should return a Value.", ent.span))
                         }));
                     }
                     
@@ -420,7 +421,7 @@ namespace Atla.Lang.Hir
             //}
         }
         
-        public implType(mir: Mir.Type, tyDef: Atla.Lang.Type.Define): option[string] {
+        public implType(mir: Mir.Type, tyDef: Atla.Lang.Type.Define): option[Problem] {
             // コンストラクタ
             def ctor = addConstructor(tyDef.scope.parent, mir, tyDef); // 型が宣言されているスコープと同じスコープで宣言
             
@@ -444,7 +445,7 @@ namespace Atla.Lang.Hir
                 fields.Add(field, mf);
                 match (field.getSymbol()) {
                     | Some(sym) => sym.kind = SymbolKind.Field(mf.builder);
-                    | _ => return Some($"$field does not have a symbol.");
+                    | _ => return Some(Problem(Severity.Error, $"$field does not have a symbol.", Span.zero()));
                 }
             }
             
@@ -513,11 +514,11 @@ namespace Atla.Lang.Hir
             mir.body = proc.ToNList();
         }
         
-        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Method): Result[Mir.Method] {
+        public addMethod(mc: Mir.MethodContainer, scope: Hir.Scope, hir: Hir.Method): Result[Mir.Method, Problem] {
             def type = hir.fn.type.pruned();
             match (type) {
                 | Type.Fn => ()
-                | _ => return Result.Failure($"$hir is $type, it should be a function.")
+                | _ => return Result.Failure(Problem(Severity.Error, $"$hir is $type, it should be a function.", Span.zero()))
             }
             def fnType = type :> Type.Fn;
             
@@ -525,7 +526,7 @@ namespace Atla.Lang.Hir
             foreach (i in Enumerable.Range(0, fnType.args.Length)) {
                 match (hir.fn.scope.resolveArgNth(i)) {
                     | Some(sym) when sym.name == hir.fn.args.Nth(i).name => method.frame.declareArg(sym) // 一応名前チェックする
-                    | _ => return Result.Failure($"Failed to create method frame. Could not find the argument $(hir.fn.args.Nth(i).name) in function scope.")
+                    | _ => return Result.Failure(Problem(Severity.Error, $"Failed to create method frame. Could not find the argument $(hir.fn.args.Nth(i).name) in function scope.", Span.zero()))
                 }
             }
             
@@ -534,26 +535,26 @@ namespace Atla.Lang.Hir
             if (syms.Count() == 1) {
                 syms.First().kind = SymbolKind.Method(method.builder);
             } else {
-                return Result.Failure($"Could not resolve method $(hir.name) as $fnType.")
+                return Result.Failure(Problem(Severity.Error, $"Could not resolve method $(hir.name) as $fnType.", Span.zero()))
             }
             
             Result.Success(method)
         }
         
-        public implMethod(hir: Hir.Method, mir: Mir.Method): option[string] {
+        public implMethod(hir: Hir.Method, mir: Mir.Method): option[Problem] {
             match (trans(mir.frame, hir.fn.scope, hir.fn.body)) {
                 | Result.Success(KNormal(proc, res)) => mir.body = match (res) {
                     | Some(r) => proc.Concat([Mir.Ins.RetValue(r)]).ToList().ToNList();
                     | _ => proc.Concat([Mir.Ins.Ret()]).ToList().ToNList()
                 }
-                | Result.Success(_) => return Some($"Could not interpret $(hir.fn.body) as a value.")
+                | Result.Success(_) => return Some(Problem(Severity.Error, $"Could not interpret $(hir.fn.body) as a value.", Span.zero()))
                 | Result.Failure(e) => return Some(e);
             }
             
             None()
         }
         
-        public generateModule(asm: Mir.Assembly, hir: Hir.Module): Result[Mir.Module] {
+        public generateModule(asm: Mir.Assembly, hir: Hir.Module): Result[Mir.Module, Problem] {
             def mod = Mir.Module(asm, hir.name);
             
             // 先に宣言だけして、そのあと関数本体を変換する
@@ -580,7 +581,7 @@ namespace Atla.Lang.Hir
             Result.Success(mod)
         }
         
-        public trans(asm: Hir.Assembly): Result[Mir.Assembly] {
+        public trans(asm: Hir.Assembly): Result[Mir.Assembly, Problem] {
             def mir = Mir.Assembly(asm.name, asm.fileName);
             foreach ((name,mod) in asm.modules.KeyValuePairs) {
                 match (generateModule(mir, mod)) {

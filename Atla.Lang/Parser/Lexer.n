@@ -313,7 +313,7 @@ namespace Atla.Lang.Parser
             tokens = ws.many()._andR(str._or(double)._or(int)._or(op)._or(delim)._or(id)._or(comment)).sepBy(ws.many())._andL(ws.many())._andL(eoi());
         }
         
-        public tokenize(text: string): Result[SourceChar, list[Token]] {
+        public tokenize(text: string): ParseResult[SourceChar, list[Token]] {
             tokens.parse(SourceInput(text.Replace("\r\n", "\n").Replace("\r", "\n"))); // 改行コードを統一する // TODO CRLFとCRがあったらWarningを出したい
         }
     }

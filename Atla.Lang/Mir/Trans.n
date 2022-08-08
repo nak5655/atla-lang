@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Atla.Lang.Cir;
+using Atla.Lang.Parse;
 
 // TODO Cir.from に変更(MIRがCIRの詳細に依存すべきではない)
 namespace Atla.Lang.Mir
@@ -16,7 +17,7 @@ namespace Atla.Lang.Mir
     {
         labelTable: Hashtable[Mir.Label, Cir.Label] = Hashtable(); // TODO これフレーム毎でよさそう
         
-        public load(frame: Frame, mir: Mir.Value): Result[IEnumerable[Cir.Ins]] {
+        public load(frame: Frame, mir: Mir.Value): Result[IEnumerable[Cir.Ins], Problem] {
             match (mir) {
                 | Mir.Value.Imm(imm) => match (imm) {
                     | Mir.Imm.Bool(v) => Result.Success([Cir.Ins.LdI32(v.toInt())])
@@ -27,21 +28,21 @@ namespace Atla.Lang.Mir
                 | Mir.Value.Sym(sym) => match (frame.resolve(sym)) {
                     | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.LdLoc(i)])
                     | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArg(i)])
-                    | _ => Result.Failure($"Symbol $sym is invalid.") 
+                    | _ => Result.Failure(Problem(Severity.Error, $"Symbol $sym is invalid.", Span.zero()))
                 }
                 | Mir.Value.Field(inst, field) => match (frame.resolve(inst)) {
                     | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.LdLoc(i), Cir.Ins.LdFld(field)])
                     | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArg(i), Cir.Ins.LdFld(field)])
-                    | _ => Result.Failure($"Symbol $inst is invalid.") 
+                    | _ => Result.Failure(Problem(Severity.Error, $"Symbol $inst is invalid.", Span.zero()))
                 }
             }
         }
         
-        public store(frame: Frame, sym: Symbol): Result[IEnumerable[Cir.Ins]] {
+        public store(frame: Frame, sym: Symbol): Result[IEnumerable[Cir.Ins], Problem] {
             match (frame.resolve(sym)) {
                     | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.StLoc(i)])
                     | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.StArg(i)])
-                    | _ => Result.Failure($"Symbol $sym is invalid.") 
+                    | _ => Result.Failure(Problem(Severity.Error, $"Symbol $sym is invalid.", Span.zero()))
             }
         }
         
@@ -57,12 +58,12 @@ namespace Atla.Lang.Mir
             }
         }
         
-        public trans(frame: Frame, mir: Mir.Ins): Result[IEnumerable[Cir.Ins]] {
+        public trans(frame: Frame, mir: Mir.Ins): Result[IEnumerable[Cir.Ins], Problem] {
             match (mir) {
                 | Mir.Ins.TAC(dst, lhs, op, rhs) => load(frame, lhs).bind(a => load(frame, rhs).bind(b => match (frame.resolve(dst)) {
                     | Some(FramePosition.Loc(i)) => Result.Success(a.Concat(b).Concat([trans(op), Cir.Ins.StLoc(i)]))
                     | Some(FramePosition.Arg(i)) => Result.Success(a.Concat(b).Concat([trans(op), Cir.Ins.StArg(i)]))
-                    | _ => Result.Failure($"Symbol $dst is invalid.")
+                    | _ => Result.Failure(Problem(Severity.Error, $"Symbol $dst is invalid.", Span.zero()))
                 }))
                 | Mir.Ins.Assign(sym, rhs) => load(frame, rhs).bind(vs => store(frame, sym).map(st => vs.Concat(st)))
                 | Mir.Ins.AssignField(sym, field, rhs) => load(frame, rhs).bind(vs => load(frame, Mir.Value.Sym(sym)).map(ld => ld.Concat(vs).Concat([Cir.Ins.StFld(field)])))
@@ -98,12 +99,12 @@ namespace Atla.Lang.Mir
             }
         }
         
-        public trans(mir: Mir.Constructor): Result[Cir.Constructor] {
+        public trans(mir: Mir.Constructor): Result[Cir.Constructor, Problem] {
             def body = mir.body.Map(i => trans(mir.frame, i)).seq().map(r => r.flatten());
             body.map(b => Cir.Constructor(mir.builder, mir.frame, b.ToList().ToNList()))
         }
         
-        public trans(mir: Mir.Method): Result[Cir.Method] {
+        public trans(mir: Mir.Method): Result[Cir.Method, Problem] {
             def body = mir.body.Map(i => trans(mir.frame, i)).seq().map(r => r.flatten());
             body.map(b => {
                 if (b.Count() > 0 && !(b.Last() is Cir.Ins.Ret)) {
@@ -114,7 +115,7 @@ namespace Atla.Lang.Mir
             })
         }
         
-        public trans(mir: Mir.Type): Result[Cir.Type] {
+        public trans(mir: Mir.Type): Result[Cir.Type, Problem] {
             mir.methods.Map(m => trans(m)).seq().bind(ms => {
                 mir.ctors.Map(c => trans(c)).seq().map(cs => {
                     Cir.Type(mir.builder, cs.NToList(), ms.NToList())
@@ -122,7 +123,7 @@ namespace Atla.Lang.Mir
             })
         }
         
-        public trans(mir: Mir.Module): Result[Cir.Module] {
+        public trans(mir: Mir.Module): Result[Cir.Module, Problem] {
             mir.types.Map(t => trans(t)).seq().bind(ts => {
                 mir.methods.Map(m => trans(m)).seq().map(ms => {
                     Cir.Module(mir.builder, ts.ToList().ToNList(), ms.ToList().ToNList())
@@ -130,7 +131,7 @@ namespace Atla.Lang.Mir
             })
         }
         
-        public trans(mir: Mir.Assembly): Result[Cir.Assembly] {
+        public trans(mir: Mir.Assembly): Result[Cir.Assembly, Problem] {
             mir.modules.Values.Map(m => trans(m)).seq().map(ms => Cir.Assembly(mir.fileName, mir.builder, ms.ToList().ToNList()))
         }
     }

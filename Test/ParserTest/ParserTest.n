@@ -19,56 +19,32 @@ namespace Test.ParserTest
     class ParserTest
     {
         tryParse(code: string): void {
-            def lexer = Lexer();
-            match (lexer.tokenize(code)) {
-                | Result.Success(tokens, _) => {
-                    def parser = Parser();
-                    match (parser.mod.parse(TokenInput(tokens, 0))) {
-                        | Result.Success(result, _) => {
-                            Assert.AreEqual(0, result.scanErrors().Count())
-                        }
-                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-                    }
-                }
-                | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-            }
+            def tokens = Lexer().tokenize(code).getResult().Value.result;
+            def result = Parser().mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
+            Assert.AreEqual(0, result.scanErrors().Count());
         }
         
         [Test]
         public EasyTokenizeTest(): void {
-            def lexer = Lexer();
-            match (lexer.tokenize("let main = 2 + -5 == true")) {
-                | Result.Success(result, _) => {
-                    Assert.AreEqual(8, result.Length);
-                    Assert.IsInstanceOf(typeof(Token.Delim), result.ElementAt(2));
-                    Assert.IsInstanceOf(typeof(Token.InfixOp), result.ElementAt(4));
-                    Assert.IsInstanceOf(typeof(Token.InfixOp), result.ElementAt(6));
-                }
-                | _ => throw System.Exception("failed to tokenize.")
-            }
+            def result = Lexer().tokenize("let main = 2 + -5 == true").getResult().Value.result;
+            Assert.AreEqual(8, result.Length);
+            Assert.IsInstanceOf(typeof(Token.Delim), result.ElementAt(2));
+            Assert.IsInstanceOf(typeof(Token.InfixOp), result.ElementAt(4));
+            Assert.IsInstanceOf(typeof(Token.InfixOp), result.ElementAt(6));
         }
         
         [Test]
         public AstEasyBinOpTest(): void {
-            def lexer = Lexer();
-            match (lexer.tokenize("2 + 5 * (10 - 1) == 47")) {
-                | Result.Success(tokens, _) => {
-                    match (Parser().expr.parse(TokenInput(tokens, 0))) {
-                        | Result.Success(result, _) => {
-                            def a = result :> Expr.Apply;
-                            Assert.AreEqual("==", (a.fn :> Expr.Id).value);
-                            def b = a.args.ElementAt(0) :> Expr.Apply;
-                            Assert.AreEqual("+", (b.fn :> Expr.Id).value);
-                            def c = b.args.ElementAt(1) :> Expr.Apply;
-                            Assert.AreEqual("*", (c.fn :> Expr.Id).value);
-                            def d = c.args.ElementAt(1) :> Expr.Apply;
-                            Assert.AreEqual("-", (d.fn :> Expr.Id).value);
-                        }
-                        | Result.Failure(reason, failAt) => throw System.Exception($"$(failAt) : $(reason)")
-                    }
-                }
-                | _ => throw System.Exception("failed to tokenize.")
-            }
+            def tokens = Lexer().tokenize("2 + 5 * (10 - 1) == 47").getResult().Value.result;
+            def result = Parser().expr.parse(TokenInput(tokens, 0)).getResult().Value.result;
+            def a = result :> Expr.Apply;
+            Assert.AreEqual("==", (a.fn :> Expr.Id).value);
+            def b = a.args.ElementAt(0) :> Expr.Apply;
+            Assert.AreEqual("+", (b.fn :> Expr.Id).value);
+            def c = b.args.ElementAt(1) :> Expr.Apply;
+            Assert.AreEqual("*", (c.fn :> Expr.Id).value);
+            def d = c.args.ElementAt(1) :> Expr.Apply;
+            Assert.AreEqual("-", (d.fn :> Expr.Id).value);
         }
         
         [Test]
@@ -80,21 +56,11 @@ namespace Test.ParserTest
                 "import a.a\nfn a (b: int): Int =",
             ];
             foreach (case in cases) {
-                match (lexer.tokenize(case)) {
-                    | Result.Success(tokens, _) => {
-                        match (Parser().mod.parse(TokenInput(tokens, 0))) {
-                            | Result.Success(result, input) => {
-                                def next = input.get();
-                                when (next.IsSome)
-                                    throw System.Exception($"$next should be None.")
-                            }
-                            | Result.Failure(reason, failAt) => {
-                                throw System.Exception($"$(failAt) : $(reason)")
-                            }
-                        }
-                    }
-                    | _ => throw System.Exception("failed to tokenize.")
-                }
+                def tokens = lexer.tokenize(case).getResult().Value.result;
+                def result = Parser().mod.parse(TokenInput(tokens, 0)).getResult().Value;
+                def next = result.next.get();
+                when (next.IsSome)
+                    throw System.Exception($"$next should be None.")
             }
         }
         

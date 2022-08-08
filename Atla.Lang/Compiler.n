@@ -23,10 +23,10 @@ namespace Atla.Lang
         public updateModule(asm: Hir.Assembly, modulePath: string, code: string): option[Hir.Module] {
             def lexer = Atla.Lang.Parser.Lexer();
             match (lexer.tokenize(code)) {
-                | Atla.Lang.Parse.Result.Success(tokens, _) => {        
+                | ParseResult.Success(ParseSuccess(tokens, _)) => {        
                     def parser = Atla.Lang.Parser.Parser();
                     match (parser.mod.parse(Atla.Lang.Parser.TokenInput(tokens, 0))) {
-                        | Atla.Lang.Parse.Result.Success(ast, _) => {
+                        | ParseResult.Success(ParseSuccess(ast, _)) => {
                             when (modulePath.IsEmpty()) {
                                 handleProblem(Problem(Severity.Error, "module path must not be empty.", Span.zero()));
                                 return None();
@@ -59,13 +59,13 @@ namespace Atla.Lang
 
                             Some(hir)
                         }
-                        | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
+                        | ParseResult.Failure(ParseFailure(reason, failAt)) => {
                             handleProblem(Problem(Severity.Error, reason, failAt.position() :> Span));
                             None()
                         }
                     }
                 }
-                | Atla.Lang.Parse.Result.Failure(reason, failAt) => {
+                | ParseResult.Failure(ParseFailure(reason, failAt)) => {
                     def pos = failAt.position() :> Atla.Lang.Parse.Position;
                     handleProblem(Problem(Severity.Error, reason, Span(pos, pos.right())));
                     None()
@@ -98,8 +98,8 @@ namespace Atla.Lang
                 | Atla.Lang.Result.Success(mir) => {
                     Some(mir)
                 }
-                | Atla.Lang.Result.Failure(msg) => {
-                    handleProblem(Problem(Severity.Error, msg, Span.zero())); // TODO Span
+                | Atla.Lang.Result.Failure(problem) => {
+                    handleProblem(problem);
                     None()
                 }
             }
@@ -110,8 +110,8 @@ namespace Atla.Lang
                 | Atla.Lang.Result.Success(cir) => {
                     Some(cir)
                 }
-                | Atla.Lang.Result.Failure(msg) => {
-                    handleProblem(Problem(Severity.Error, msg, Span.zero())); // TODO Span
+                | Atla.Lang.Result.Failure(problem) => {
+                    handleProblem(problem);
                     None()
                 }
             }

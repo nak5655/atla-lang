@@ -10,31 +10,25 @@ using Atla.Lang.Parse;
 
 namespace Atla.Lang.Parse
 {
-    public variant Result[I, A]
-    {
-        | Success { result: A; next: Input[I] }
-        | Failure { reason: string; failAt: Input[I] }
-
-        public getResult(): option[A] {
-            match (this) {
-                | Success(r, _) => Some(r)
-                | _ => None()
-            }
+    public type ParseResult[I, A] = Result[ParseSuccess[I, A], ParseFailure[I]];
+    
+    [Record]
+    public class ParseSuccess[I, A] {
+        public result: A;
+        public next: Input[I];
+    }
+    
+    [Record]
+    public class ParseFailure[I] {
+        public reason: string;
+        public failAt: Input[I];
+        
+        public static expectedButGot(expected: string, got: I, input: Input[I]): ParseFailure[I] {
+            ParseFailure($"expected $expected, but got $got.", input)
         }
         
-        public static expectedButGot(expected: string, got: I, input: Input[I]): Failure {
-            Failure($"expected $expected, but got $got.", input)
-        }
-        
-        public static eof(expected: string, input: Input[I]): Failure {
-            Failure($"expected $expected, but reached EOF.", input)
-        }
-        
-        public override ToString(): string {
-            match (this) {
-                | Success(result, next) => $"Success { result: $result, next: $next }"
-                | Failure(reason, failAt) => $"Failure { reason: $reason, failAt: $failAt }"
-            }
+        public static eof(expected: string, input: Input[I]): ParseFailure[I] {
+            ParseFailure($"expected $expected, but reached EOF.", input)
         }
     }
 }

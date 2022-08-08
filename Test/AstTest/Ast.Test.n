@@ -24,10 +24,10 @@ namespace Test.AstTest
             def code = "import a.\nfn a";
             
             def lexer = Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value;
+            def tokens = lexer.tokenize(code).getResult().Value.result;
             def parser = Parser();
             
-            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
+            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
             def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
@@ -39,10 +39,10 @@ namespace Test.AstTest
             def code = Misc.readCase("fibonacci.atla");
             
             def lexer = Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value;
+            def tokens = lexer.tokenize(code).getResult().Value.result;
             def parser = Parser();
             
-            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
+            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
             def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
@@ -54,10 +54,10 @@ namespace Test.AstTest
             def code = Misc.readCase("countUp.atla");
             
             def lexer = Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value;
+            def tokens = lexer.tokenize(code).getResult().Value.result;
             def parser = Parser();
             
-            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value;
+            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
             def hir = Atla.Lang.Ast.Trans().trans(ast, "main");

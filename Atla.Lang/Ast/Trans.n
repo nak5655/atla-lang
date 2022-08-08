@@ -33,23 +33,23 @@ namespace Atla.Lang.Ast
             }
         }
         
-        public trans(ast: Ast.MatchEntry): Result[Hir.MatchEntry] {
+        public trans(ast: Ast.MatchEntry): Result[Hir.MatchEntry, Problem] {
             match (ast) {
                 | Ast.MatchEntry.Case(p, e) => trans(e).map(ee => Hir.MatchEntry(trans(p), ee))
-                | Ast.MatchEntry.Error as e => Result.Failure(e.ToString())
+                | Ast.MatchEntry.Error as e => Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
             }
         }
         
-        public trans(ast: Ast.IfEntry): Result[Hir.SwitchEntry] {
+        public trans(ast: Ast.IfEntry): Result[Hir.SwitchEntry, Problem] {
             match (ast) {
                 | Ast.IfEntry.Then(p, e) => trans(p).bind(pp => trans(e).map(ee => Hir.SwitchEntry(pp, ee)))
                 | Ast.IfEntry.Else(e) => trans(e).map(ee => Hir.SwitchEntry(Hir.Expr.Bool(true), ee))
-                | Ast.IfEntry.Error as e => Result.Failure(e.ToString())
+                | Ast.IfEntry.Error as e => Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
             }
         }
         
-        public trans(ast: Ast.Stmt): Result[Hir.Stmt] {
-            def stmt: Result[Hir.Stmt] = match (ast) {
+        public trans(ast: Ast.Stmt): Result[Hir.Stmt, Problem] {
+            def stmt: Result[Hir.Stmt, Problem] = match (ast) {
                 | Ast.Stmt.Expr(expr) => trans(expr).map(e => Hir.Stmt.Expr(e))
                 | Ast.Stmt.Val(name, expr) => {
                     trans(expr).map(rhs => Hir.Stmt.Var(Hir.Expr.Id(name), rhs, false))
@@ -64,13 +64,13 @@ namespace Atla.Lang.Ast
                 | Ast.Stmt.Fn(f) => {
                     trans(f).map(method => Hir.Stmt.Var(Hir.Expr.Id(method.name), method.fn, false)) // syntax suger
                 }
-                | Ast.Stmt.Error as e => Result.Failure(e.ToString())
+                | Ast.Stmt.Error as e => Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
             };
             stmt.map(s => s.addSpan(ast.span))
         }
         
-        public trans(ast: Ast.Expr): Result[Hir.Expr] {
-            def expr: Result[Hir.Expr] = match (ast) {
+        public trans(ast: Ast.Expr): Result[Hir.Expr, Problem] {
+            def expr: Result[Hir.Expr, Problem] = match (ast) {
                 | Ast.Expr.Unit => Result.Success(Hir.Expr.Unit())
                 | Ast.Expr.Int(value) => Result.Success(Hir.Expr.Int(value))
                 | Ast.Expr.Double(value) => Result.Success(Hir.Expr.Double(value))
@@ -96,7 +96,7 @@ namespace Atla.Lang.Ast
                 | Ast.Expr.Apply(fn, args) => trans(fn).bind(f => args.Map(e => trans(e)).seq().map(es => Hir.Expr.Apply(f, es.NToList())))
                 | Ast.Expr.If(entries) => entries.Map(en => trans(en)).seq().map(es => Hir.Expr.Switch(es.NToList()))
                 | Ast.Expr.Match(e, entries) => trans(e).bind(ee => entries.Map(en => trans(en)).seq().map(es => Hir.Expr.Match(ee, es.NToList())))
-                | Ast.Expr.Error as e => Result.Failure(e.ToString())
+                | Ast.Expr.Error as e => Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
             }
             
             expr.map(e => {
@@ -105,7 +105,7 @@ namespace Atla.Lang.Ast
             })
         }
         
-        public trans(ast: Ast.Fn): Result[Hir.Method] {
+        public trans(ast: Ast.Fn): Result[Hir.Method, Problem] {
             def t = match (ast) {
                 | Ast.Fn.Static(name, args, ret, body) => Result.Success(name, args, ret, body)
                 | Ast.Fn.Instance(name, args, ret, body) => {
@@ -129,11 +129,11 @@ namespace Atla.Lang.Ast
                         Hir.Method(name, fn)
                     })
                 }
-                | Result.Failure(e) => Result.Failure(e)
+                | Result.Failure(e) => Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
             }
         }
         
-        public trans(ast: Ast.Decl.Type): Result[Type.Define] {
+        public trans(ast: Ast.Decl.Type): Result[Type.Define, Problem] {
             def ty = Type.Define(ast.name);
             foreach (item in ast.items) {
                 _ = match (item) {
@@ -144,14 +144,14 @@ namespace Atla.Lang.Ast
                             | Result.Failure(e) => return Result.Failure(e)
                         }
                     }
-                    | Ast.TypeItem.Error as e => return Result.Failure(e.ToString())
+                    | Ast.TypeItem.Error as e => return Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
                 }
             }
             
             Result.Success(ty)
         }
         
-        public trans(ast: Ast.Module, name: string): Result[Hir.Module] {
+        public trans(ast: Ast.Module, name: string): Result[Hir.Module, Problem] {
             def mod = Hir.Module(name);
             foreach (decl in ast.decls) {
                 match (decl) {
@@ -168,7 +168,7 @@ namespace Atla.Lang.Ast
                             return Result.Failure(r.getError().Value);
                         mod.types.Add(r.getResult().Value);
                     }
-                    | Ast.Decl.Error as e => return Result.Failure(e.ToString())
+                    | Ast.Decl.Error as e => return Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
                 }
             }
             Result.Success(mod)

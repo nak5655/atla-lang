@@ -328,7 +328,7 @@ namespace Atla.Lang.Parser
     public module ParserExtensions {
         public onceExpr(this p: Parser[Token, Expr]): Parser[Token, Expr] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, Expr].Failure; // always it is failure
+                def failure = (ret :> ParseResult[Token, Expr].Failure).error : ParseFailure[Token]; // always it is failure
                 def ret = Expr.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
@@ -337,7 +337,7 @@ namespace Atla.Lang.Parser
         
         public onceStmt(this p: Parser[Token, Stmt]): Parser[Token, Stmt] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, Stmt].Failure; // always it is failure
+                def failure = (ret :> ParseResult[Token, Stmt].Failure).error : ParseFailure[Token]; // always it is failure
                 def ret = Stmt.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
@@ -346,7 +346,7 @@ namespace Atla.Lang.Parser
         
         public onceDecl(this p: Parser[Token, Decl]): Parser[Token, Decl] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, Decl].Failure; // ret is always failure
+                def failure = (ret :> ParseResult[Token, Decl].Failure).error : ParseFailure[Token]; // ret is always failure
                 def ret = Decl.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
@@ -355,7 +355,7 @@ namespace Atla.Lang.Parser
         
         public onceTypeItem(this p: Parser[Token, TypeItem]): Parser[Token, TypeItem] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, TypeItem].Failure; // ret is always failure
+                def failure = (ret :> ParseResult[Token, TypeItem].Failure).error : ParseFailure[Token]; // ret is always failure
                 def ret = TypeItem.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
@@ -364,7 +364,7 @@ namespace Atla.Lang.Parser
 
         public onceFn(this p: Parser[Token, Fn]): Parser[Token, Fn] {
             p.skipFail(ret => {
-                def failure = ret :> Result[Token, Fn].Failure; // always it is failure
+                def failure = (ret :> ParseResult[Token, Fn].Failure).error : ParseFailure[Token]; // always it is failure
                 def ret = Fn.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
@@ -401,17 +401,14 @@ namespace Atla.Lang.Parser
         public consumeBlock[A](this p: Parser[Token, A]): Parser[Token, A] {
             AnnoParser(input => {
                 match (input.get()) {
-                    | Some(openBy) => match (p.parse(BlockInput(input, openBy))) {
-                        | Parse.Result.Success(result, next) => {
-                            def blockNext = next :> BlockInput;
-                            match (blockNext.get()) {
-                                | Some => Result.Failure("A block parser did not reach EOI.", blockNext)
-                                | _ => Result.Success(result, blockNext.parent) // unwrap
-                            }
+                    | Some(openBy) => p.parse(BlockInput(input, openBy)).bind(success => {
+                        def blockNext = success.next :> BlockInput;
+                        match (blockNext.get()) {
+                            | Some => ParseResult.Failure(ParseFailure("A block parser did not reach EOI.", blockNext))
+                            | _ => ParseResult.Success(ParseSuccess(success.result, blockNext.parent)) // unwrap
                         }
-                        | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                    }
-                    | _ => Result.Failure("reach EOI", input)
+                    })
+                    | _ => ParseResult.Failure(ParseFailure("reach EOI", input))
                 }
             })
         }
@@ -419,13 +416,10 @@ namespace Atla.Lang.Parser
         public inlineBlock[A](this p: Parser[Token, A]): Parser[Token, A] {
             AnnoParser(input => {
                 match (input.get()) {
-                    | Some(openBy) => match (p.parse(BlockInput(input, openBy))) {
-                        | Parse.Result.Success(result, next) => {
-                            Result.Success(result, (next :> BlockInput).parent) // unwrap EOIまで読み込まなくてもいい
-                        }
-                        | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                    }
-                    | _ => Result.Failure("reach EOI", input)
+                    | Some(openBy) => p.parse(BlockInput(input, openBy)).bind(success => {
+                        ParseResult.Success(ParseSuccess(success.result, (success.next :> BlockInput).parent)) // unwrap EOIまで読み込まなくてもいい
+                    })
+                    | _ => ParseResult.Failure(ParseFailure("reach EOI", input))
                 }
             })
         }

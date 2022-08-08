@@ -14,51 +14,42 @@ namespace Atla.Lang.Parse
 {
     // instead of annonymous class
     public class AnnoParser[I, A]: Parser[I, A] {
-        mutable _apply: Input[I] -> Result[I, A];
+        mutable _apply: Input[I] -> ParseResult[I, A];
         
-        public this(apply: Input[I] -> Result[I, A]) {
+        public this(apply: Input[I] -> ParseResult[I, A]) {
             _apply = apply
         }
         
-        public override apply(input: Input[I]): Result[I, A] {
+        public override apply(input: Input[I]): ParseResult[I, A] {
             _apply(input)
         }
     }
     
     public abstract class Parser[I, A]
     {
-        mutable cache: Hashtable[System.Object, Result[I, A]];
+        mutable cache: Hashtable[System.Object, ParseResult[I, A]];
         
         public this() {
             cache = Hashtable();
         }
         
-        public abstract apply(input: Input[I]): Result[I, A];
+        public abstract apply(input: Input[I]): ParseResult[I, A];
         
-        public parse(input: Input[I]): Result[I, A] {
+        public parse(input: Input[I]): ParseResult[I, A] {
             cache.GetValueOrDefault(input.position(), apply(input))
         }
 
         public map[B](f: A -> B): Parser[I, B] {
             AnnoParser((input) => {
-                match (parse(input)) {
-                    | Parse.Result.Success(result, next) => Result.Success(f(result), next)
-                    | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                }
+                parse(input).map(success => ParseSuccess(f(success.result), success.next))
             })
         }
         
         public _and[B](other: Parser[I, B]): Parser[I, A * B] {
             AnnoParser(input => {
-                match (parse(input)) {
-                    | Parse.Result.Success as lhs => {
-                        match (other.parse(lhs.next)) {
-                            | Parse.Result.Success as rhs => Result.Success((lhs.result, rhs.result), rhs.next)
-                            | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                        }
-                    }
-                    | Parse.Result.Failure(reason, failAt) => Result.Failure(reason, failAt)
-                }
+                parse(input).bind(lhs: ParseSuccess[I, A] => {
+                    other.parse(lhs.next).map(rhs => ParseSuccess((lhs.result, rhs.result), rhs.next))
+                })
             })
         }
         
@@ -73,8 +64,8 @@ namespace Atla.Lang.Parse
         public _or(other: Parser[I, A]): Parser[I, A] {
             AnnoParser(input => {
                 match (parse(input)) {
-                    | Parse.Result.Success as lhs => lhs
-                    | Parse.Result.Failure => other.parse(input)
+                    | ParseResult.Success as lhs => lhs
+                    | ParseResult.Failure => other.parse(input)
                 }
             })
         }
@@ -88,14 +79,14 @@ namespace Atla.Lang.Parse
                     when (current.get().IsNone) // 入力がなくなったらすぐに終了する (パフォーマンスのため)
                         break;
                     match (parse(current)) {
-                        | Parse.Result.Success(result, next) => {
+                        | ParseResult.Success(ParseSuccess(result, next)) => {
                             ret.Add(result);
                             current = next;
                         }
-                        | Parse.Result.Failure => break
+                        | ParseResult.Failure => break
                     }
                 }
-                Result.Success(ret.ToNList(), current)
+                ParseResult.Success(ParseSuccess(ret.ToNList(), current))
             })
         }
         
@@ -111,7 +102,7 @@ namespace Atla.Lang.Parse
                     when (current.get().IsNone) // 入力がなくなったらすぐに終了する (パフォーマンスのため)
                         break;
                     match (_andL(sep).parse(current)) {
-                        | Parse.Result.Success(result, next) => {
+                        | ParseResult.Success(ParseSuccess(result, next)) => {
                             ret.Add(result);
                             current = next;
                             continue;
@@ -119,60 +110,57 @@ namespace Atla.Lang.Parse
                         | _ => ()
                     }
                     match (parse(current)) {
-                        | Parse.Result.Success(result, next) => {
+                        | ParseResult.Success(ParseSuccess(result, next)) => {
                             ret.Add(result);
                             current = next;
                         }
-                        | Parse.Result.Failure => break
+                        | ParseResult.Failure => break
                     }
                     break
                 }
-                Result.Success(ret.ToNList(), current)
+                ParseResult.Success(ParseSuccess(ret.ToNList(), current))
             })
         }
         
         public sepBy1[B](sep: Parser[I, B]): Parser[I, list[A]] {
             AnnoParser(input => {
-                match (sepBy(sep).parse(input)) {
-                    | Parse.Result.Success(result, next) when result.Length > 0 => Result.Success(result, next)
-                    | Parse.Result.Success => Result.Failure($"unexpected $(input.get())", input)
-                    | Parse.Result.Failure(msg, failAt) => Result.Failure(msg, failAt)
-                }
+                sepBy(sep).parse(input).bind(success => if (success.result.Length > 0) {
+                    ParseResult.Success(ParseSuccess(success.result, success.next))
+                } else {
+                    ParseResult.Failure(ParseFailure($"unexpected $(input.get())", input))
+                });
             })
         }
         
         public optional(): Parser[I, option[A]] {
             AnnoParser(input => {
                 match (parse(input)) {
-                    | Parse.Result.Success(result, next) => Result.Success(Some(result), next)
-                    | Parse.Result.Failure(_, failAt) => Result.Success(None(), failAt)
+                    | ParseResult.Success(ParseSuccess(result, next)) => ParseResult.Success(ParseSuccess(Some(result), next))
+                    | ParseResult.Failure(ParseFailure(_, failAt)) => ParseResult.Success(ParseSuccess(None(), failAt))
                 }
             })
         }
         
         public notFollowedBy[B](other: Parser[I, B]): Parser[I, A] {
             AnnoParser(input => {
-                match (parse(input)) {
-                    | Parse.Result.Success as res => match (other.parse(res.next)) {
-                        | Parse.Result.Success as r => Result.Failure($"unexpected $(r.result)", res.next)
-                        | _ => res
-                    }
-                    | _ as res => res
-                }
+                parse(input).bind(success => match (other.parse(success.next)) {
+                    | ParseResult.Success(next) => ParseResult.Failure(ParseFailure($"unexpected $(next.result)", success.next))
+                    | ParseResult.Failure => ParseResult.Success(success)
+                })
             })
         }
         
-        public skipFail(f: Result[I, A] -> A): Parser[I, A] {
+        public skipFail(f: ParseResult[I, A] -> A): Parser[I, A] {
             AnnoParser(input => {
                 match (parse(input)) {
-                    | Parse.Result.Success as res => res
-                    | Parse.Result.Failure as res => {
+                    | ParseResult.Success as res => res
+                    | ParseResult.Failure as res => {
                         mutable current = input;
                         while (current.get().IsSome) {
                             current = current.next();
                         }
                         
-                        Result.Success(f(res), current)
+                        ParseResult.Success(ParseSuccess(f(res), current))
                     }
                 }
             })

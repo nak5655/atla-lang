@@ -10,9 +10,9 @@ using System.Linq;
 
 namespace Atla.Lang
 {
-    public variant Result[A] {
+    public variant Result[A, E] {
         | Success { result: A }
-        | Failure { error: string }
+        | Failure { error: E }
         
         public getResult(): option[A] {
             match (this) {
@@ -28,21 +28,21 @@ namespace Atla.Lang
             }
         }
         
-        public getError(): option[string] {
+        public getError(): option[E] {
             match (this) {
                 | Success => None()
                 | Failure(s) => Some(s)
             }
         }
         
-        public map[B](f: A -> B): Result[B] {
+        public map[B](f: A -> B): Result[B, E] {
             match (this) {
                 | Success(r) => Result.Success(f(r))
                 | Failure(e) => Result.Failure(e)
             }
         }
         
-        public bind[B](f: A -> Result[B]): Result[B] {
+        public bind[B](f: A -> Result[B, E]): Result[B, E] {
             match (this) {
                 | Success(r) => f(r)
                 | Failure(e) => Result.Failure(e)
@@ -51,7 +51,7 @@ namespace Atla.Lang
     }
     
     public module ResultExtensions {
-        public seq[A](this vs: IEnumerable[Result[A]]): Result[IEnumerable[A]] {
+        public seq[A, E](this vs: IEnumerable[Result[A, E]]): Result[IEnumerable[A], E] {
             def res = List();
             foreach (v in vs) {
                 match (v) {

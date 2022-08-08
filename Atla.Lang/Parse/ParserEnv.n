@@ -19,12 +19,12 @@ namespace Atla.Lang.Parse
                 match (input.get()) {
                     | Some(got) => {
                         if (pred(got)) {
-                            Result.Success(got, input.next())
+                            ParseResult.Success(ParseSuccess(got, input.next()))
                         } else {
-                            Result.Failure.expectedButGot(name, got, input)
+                            ParseResult.Failure(ParseFailure.expectedButGot(name, got, input))
                         }
                     }
-                    | _ => Result.Failure.eof(name, input)
+                    | _ => ParseResult.Failure(ParseFailure.eof(name, input))
                 }
             })
         }
@@ -38,29 +38,29 @@ namespace Atla.Lang.Parse
                     match (current.get()) {
                         | Some(got) => {
                             when (!eq(got, seq.Nth(i))) {
-                                return Result.Failure.expectedButGot(name, got, current)
+                                return ParseResult.Failure(ParseFailure.expectedButGot(name, got, current))
                             }
                             ret.Add(got);
                             current = current.next();
                             i += 1;
                         }
-                        | _ => return Result.Failure.eof(name, input)
+                        | _ => return ParseResult.Failure(ParseFailure.eof(name, input))
                     }
                 }
                 
-                Result.Success(ret.AsList(), current)
+                ParseResult.Success(ParseSuccess(ret.AsList(), current))
             })
         }
         
         public pure[A](value: A): Parser[I, A] {
             AnnoParser(input => {
-                Result.Success(value, input)
+                ParseResult.Success(ParseSuccess(value, input))
             })
         }
         
         public fail[A](reason: string): Parser[I, A] {
             AnnoParser(input => {
-                Result.Failure(reason, input)
+                ParseResult.Failure(ParseFailure(reason, input))
             })
         }
         
@@ -69,8 +69,8 @@ namespace Atla.Lang.Parse
             def t = ();
             AnnoParser(input => {
                 match (input.get()) {
-                    | Some(c) => Result.Failure.expectedButGot("EOI", c, input)
-                    | _ => Result.Success(null, input)
+                    | Some(c) => ParseResult.Failure(ParseFailure.expectedButGot("EOI", c, input))
+                    | _ => ParseResult.Success(ParseSuccess(null, input))
                 }
             }): Parser[I, object]
         }
@@ -85,8 +85,8 @@ namespace Atla.Lang.Parse
                 
                 def res = p.parse(input);
                 match (res) {
-                    | Parse.Result.Success => System.Diagnostics.Debug.WriteLine($"ParserLog: $(logStack.Reverse().joinToString(\">\")) OK")
-                    | Parse.Result.Failure(reason, _) => System.Diagnostics.Debug.WriteLine($"ParserLog: $(logStack.Reverse().joinToString(\">\")) NG $reason")
+                    | ParseResult.Success => System.Diagnostics.Debug.WriteLine($"ParserLog: $(logStack.Reverse().joinToString(\">\")) OK")
+                    | ParseResult.Failure(ParseFailure(reason, _)) => System.Diagnostics.Debug.WriteLine($"ParserLog: $(logStack.Reverse().joinToString(\">\")) NG $reason")
                 }
                 
                 when (logStack.Pop() != name)
@@ -100,7 +100,7 @@ namespace Atla.Lang.Parse
     public class ParserRef[I, A]: Parser[I, A] {
         public mutable impl: Parser[I, A];
         
-        public override apply(input: Input[I]): Result[I, A] {
+        public override apply(input: Input[I]): ParseResult[I, A] {
             impl.apply(input)
         }
     }
