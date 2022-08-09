@@ -27,11 +27,11 @@ namespace Test.TypeTest
         
         [Test]
         public TypeOneOfUnifyTest(): void {
-            def a = Type.Var(Type.Fn([Type.Var(Type.OneOf([Type.Native(typeof(double))]))], Type.Unknown()));
-            def b = Type.OneOf([Type.Fn([Type.Native(typeof(double))], Type.Native(typeof(void)))]);
+            def a = Type.Var(Type.Fn([Type.Var(Type.OneOf([Type.Double]))], Type.Unknown()));
+            def b = Type.OneOf([Type.Fn([Type.Double], Type.Unit)]);
             
             a.unify(b);
-            Assert.AreEqual(Type.Native(typeof(double)), (a.pruned() :> Type.Fn).args.First());
+            Assert.AreEqual(Type.Double, (a.pruned() :> Type.Fn).args.First());
         }
     }
 }

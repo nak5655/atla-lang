@@ -19,49 +19,38 @@ namespace Test.AstTest
     [TestFixture]
     class AstTest
     {
-        [Test]
-        public EasyAstTest(): void {
-            def code = "import a.\nfn a";
-            
+        codeTest(code: string): void {
             def lexer = Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value.result;
+            def lexResult = lexer.tokenize(code);
+            def tokens = lexResult.getResult().Value.result;
             def parser = Parser();
             
-            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
+            def parseResult = parser.mod.parse(TokenInput(tokens, 0));
+            def ast = parseResult.getResult().Value.result;
             Assert.AreEqual(0, ast.scanErrors().Count());
             
             def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
             Assert.AreEqual(0, hir.getResult().Value.scanErrors().Count());
+        }
+        
+        [Test]
+        public EasyAstTest(): void {
+            codeTest("import a.\nfn a");
         }
         
         [Test]
         public AstFibonacciTest(): void {
-            def code = Misc.readCase("fibonacci.atla");
-            
-            def lexer = Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value.result;
-            def parser = Parser();
-            
-            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
-            Assert.AreEqual(0, ast.scanErrors().Count());
-            
-            def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
-            Assert.AreEqual(0, hir.getResult().Value.scanErrors().Count());
+            codeTest(Misc.readCase("fibonacci.atla"));
         }
         
         [Test]
         public AstCountUpTest(): void {
-            def code = Misc.readCase("countUp.atla");
-            
-            def lexer = Lexer();
-            def tokens = lexer.tokenize(code).getResult().Value.result;
-            def parser = Parser();
-            
-            def ast = parser.mod.parse(TokenInput(tokens, 0)).getResult().Value.result;
-            Assert.AreEqual(0, ast.scanErrors().Count());
-            
-            def hir = Atla.Lang.Ast.Trans().trans(ast, "main");
-            Assert.AreEqual(0, hir.getResult().Value.scanErrors().Count());
+            codeTest(Misc.readCase("countUp.atla"));
+        }
+        
+        [Test]
+        public AstFizzBuzzTest(): void {
+            codeTest(Misc.readCase("FizzBuzz.atla"));
         }
     }
 }

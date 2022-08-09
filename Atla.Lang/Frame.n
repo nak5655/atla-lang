@@ -29,7 +29,7 @@ namespace Atla.Lang
         }
         
         public declareTemp(type: System.Type): Symbol {
-            declareTemp(Atla.Lang.Type.Native(type))
+            declareTemp(Atla.Lang.Type.fromSystemType(type))
         }
         
         public declareTemp(type: Atla.Lang.Type): Symbol {

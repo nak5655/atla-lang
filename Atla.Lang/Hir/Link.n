@@ -32,16 +32,20 @@ namespace Atla.Lang.Hir
         
         link(mod: Hir.Module): void {
             foreach (import in mod.imports) {
-                def sysType = System.Type.GetType(import.dotted());
-                if (sysType != null) {
+                def fullName = import.dotted();
+                def types = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a => a.GetTypes()).Where(t => t.FullName == fullName).NToList();
+                if (types.Length == 1) {
                     // 外部
-                    mod.scope.import(import.path.Last(), ImportValue.NativeType(sysType));
-                } else {
+                    mod.scope.import(import.path.Last(), ImportValue.NativeType(types.First()));
+                } else if (types.IsEmpty()) {
                     // Assembly内の子モジュール
                     match (asm.findModule(import.path)) {
                         | Some(m) => mod.scope.import(import.path.Last(), ImportValue.Module(m))
                         | _ => ()
                     }
+                } else {
+                    // TODO 型名の重複エラー
+                    throw Exception("Could not import $fullName. Multiple types found.")
                 }
             }
         }

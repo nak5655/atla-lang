@@ -52,6 +52,7 @@ namespace Atla.Lang.Mir
                 | Mir.OpCode.Sub => Cir.Ins.Sub()
                 | Mir.OpCode.Mul => Cir.Ins.Mul()
                 | Mir.OpCode.Div => Cir.Ins.Div()
+                | Mir.OpCode.Mod => Cir.Ins.Rem()
                 | Mir.OpCode.Or => Cir.Ins.Or()
                 | Mir.OpCode.And => Cir.Ins.And()
                 | Mir.OpCode.Eq => Cir.Ins.Eq()

@@ -26,19 +26,37 @@ namespace Atla.Lang.Hir
         public analyze(scope: Hir.Scope, hir: Hir.Stmt): void {
             match (hir) {
                 | Var as v => {
-                    scope.declareLocal(v.id.name, v.expr.type);
+                    v.id.setSymbol(scope.declareLocal(v.id.name, v.expr.type));
                     analyze(scope, v.expr);
                 }
                 | Assign as s => analyze(scope, s.expr);
                 | Expr as e => analyze(scope, e.expr);
                 | Return as r => analyze(scope, r.expr);
+                | For as f => {
+                    analyze(scope, f.iter);
+                    
+                    f.bodyScope = Scope.Block(scope);
+                    f.id.setSymbol(f.bodyScope.declareLocal(f.id.name, f.id.type));
+                    foreach (stmt in f.body) {
+                        analyze(f.bodyScope, stmt);
+                    }
+                }
             }
         }
         
         public analyze(scope: Hir.Scope, hir: Hir.Expr): void {
             match (hir) {
                 | Unit | Bool | Int | Double | String
-                | Id | Member | StaticMember | Apply => ()
+                | Id | StaticMember => ()
+                | Member as mem => {
+                    analyze(scope, mem.expr);
+                }
+                | Apply as ap => {
+                    analyze(scope, ap.fn);
+                    foreach (arg in ap.args) {
+                        analyze(scope, arg);
+                    }
+                }
                 | Block as blk => {
                     blk.scope = Scope.Block(scope);
                     foreach (stmt in blk.stmts) {

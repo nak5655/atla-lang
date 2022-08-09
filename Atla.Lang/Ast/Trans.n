@@ -64,6 +64,11 @@ namespace Atla.Lang.Ast
                 | Ast.Stmt.Fn(f) => {
                     trans(f).map(method => Hir.Stmt.Var(Hir.Expr.Id(method.name), method.fn, false)) // syntax suger
                 }
+                | Ast.Stmt.For(name, iter, body) => {
+                    trans(iter).bind(it => body.Map(b => trans(b)).seq().map(bb => {
+                        Hir.Stmt.For(Hir.Expr.Id(name), it, bb.NToList())
+                    }))
+                }
                 | Ast.Stmt.Error as e => Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
             };
             stmt.map(s => s.addSpan(ast.span))

@@ -98,7 +98,7 @@ namespace Atla.Lang.Hir
                         | Some(var) => {
                             _ = hir.type.unify(var.type);
                         }
-                        | _ => hir.errors.Add(Error.UndefinedReference(name, expected))
+                        | _ => hir.errors.Add(Error.UndefinedReference(name, expected.pruned()))
                     }
                 }
                 | Member(expr, name) => {
@@ -146,9 +146,9 @@ namespace Atla.Lang.Hir
                             def fs = cls.fields.Map(fi => (fi.name, fi.type));
                             resolveMembers(ms.Concat(fs));
                         }
-                        | Type.Native(nt) => {
-                            def ms = nt.GetMethods().Map(methodInfo => (methodInfo.Name, methodInfo.toFnType(scope)));
-                            def fs = nt.GetFields().Filter(fi => fi.IsStatic).Map(fieldInfo => (fieldInfo.Name, Type.fromSystemType(fieldInfo.GetType())));
+                        | Type.Native as nt => {
+                            def ms = nt.type.GetMethods().Map(methodInfo => (methodInfo.Name, methodInfo.toFnType(scope)));
+                            def fs = nt.type.GetFields().Filter(fi => fi.IsStatic).Map(fieldInfo => (fieldInfo.Name, Type.fromSystemType(fieldInfo.GetType())));
                             resolveMembers(ms.Concat(fs));
                         }
                         | _ => {
@@ -209,7 +209,7 @@ namespace Atla.Lang.Hir
                         | Some(dest) => {
                             _ = dest.type.unify(rhs.type)
                         }
-                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(id.name, rhs.type))
+                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(id.name, rhs.type.pruned()))
                     }
                 }
                 | Hir.Stmt.Assign(id, rhs) => {
@@ -220,13 +220,21 @@ namespace Atla.Lang.Hir
                         | Some(dest) => {
                             _ = dest.type.unify(rhs.type)
                         }
-                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(id.name, rhs.type))
+                        | _ => hir.errors.Add(Hir.Error.UndefinedReference(id.name, rhs.type.pruned()))
                     }
                 }
                 | Hir.Stmt.Expr(expr) => typing(scope, expr, Type.Unknown())
                 | Hir.Stmt.Return(value) => {
                     typing(scope, value, Type.Unknown());
                     _ = scope.getRetType().Map(t => t.unify(value.type)) // 返り値でスコープの型を推論
+                }
+                | Hir.Stmt.For(id, iter, body, bodyScope) => {
+                    def itemType = Type.Var();
+                    typing(scope, iter, Type.Generics(Type.Iterator, [itemType])); // Iteratorを期待する
+                    typing(scope, id, itemType); // Iteratorの要素の型と一致させる
+                    foreach (stmt in body) {
+                        typing(bodyScope, stmt)
+                    }
                 }
             }
         }
@@ -248,8 +256,8 @@ namespace Atla.Lang.Hir
             def argTypes = if (pTypes.IsEmpty())
                 [Type.Unit] // 引数がないときは代わりにUnitを引数とする
             else
-                pTypes.Map(t => Type.Native(t)).ToNList();
-            Atla.Lang.Type.Fn(argTypes, Type.Native(methodInfo.ReturnType));
+                pTypes.Map(t => Type.fromSystemType(t)).ToNList();
+            Atla.Lang.Type.Fn(argTypes, Type.fromSystemType(methodInfo.ReturnType));
         }
         
     }

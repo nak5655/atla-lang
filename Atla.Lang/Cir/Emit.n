@@ -64,6 +64,7 @@ namespace Atla.Lang.Cir
                 | Cir.Ins.Sub => gen.Emit(OpCodes.Sub)
                 | Cir.Ins.Mul => gen.Emit(OpCodes.Mul)
                 | Cir.Ins.Div => gen.Emit(OpCodes.Div)
+                | Cir.Ins.Rem => gen.Emit(OpCodes.Rem)
                 | Cir.Ins.Or  => gen.Emit(OpCodes.Or)
                 | Cir.Ins.And => gen.Emit(OpCodes.And)
                 | Cir.Ins.Eq  => gen.Emit(OpCodes.Ceq)

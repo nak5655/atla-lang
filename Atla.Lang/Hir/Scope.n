@@ -41,6 +41,9 @@ namespace Atla.Lang.Hir
                 varTable.Add(Symbol("-", Atla.Lang.Type.Fn([Type.Double, Type.Double], Type.Double), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Sub, arg1),
                 ])), depth));
+                varTable.Add(Symbol("%", Atla.Lang.Type.Fn([Type.Int, Type.Int], Type.Int), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
+                    Mir.Ins.TAC(dst, arg0, Mir.OpCode.Mod, arg1),
+                ])), depth));
                 varTable.Add(Symbol("||", Atla.Lang.Type.Fn([Type.Bool, Type.Bool], Type.Bool), SymbolKind.InlineMethod(Proc.DstArg2((dst, arg0, arg1) => [
                     Mir.Ins.TAC(dst, arg0, Mir.OpCode.Or, arg1),
                 ])), depth));
@@ -198,7 +201,7 @@ namespace Atla.Lang.Hir
             when (importTable.ContainsKey(id)) {
                 match (importTable.Get(id).Value) {
                     | ImportValue.Type(t) => return t
-                    | ImportValue.NativeType(t) => return Type.Native(t)
+                    | ImportValue.NativeType(t) => return Type.fromSystemType(t)
                     | _ => ()
                 }
             }

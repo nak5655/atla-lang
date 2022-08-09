@@ -69,13 +69,13 @@ namespace Atla.Lang.Hir
                                         Result.Success(Callable.InstanceMethod(proc, inst, methods.First().info.Value))
                                     }
                                 }
-                                | Type.Native(t) => {
+                                | Type.Native as t => {
                                      // インスタンスメソッドなので自分自身を引数に含むはず
                                     def fnArgs = match (hir.type.pruned()) {
                                         | Type.Fn(args, _) => args
                                         | _ => [] // 引数は自分自身のみ
                                     }
-                                    def method = t.GetMethod(name, (instTy :: fnArgs).Map(_.ToSystemType()).ToArray());
+                                    def method = t.type.GetMethod(name, (instTy :: fnArgs).Map(_.ToSystemType()).ToArray());
                                     if (method != null)
                                         Result.Success(Callable.InstanceMethod(proc, inst, method))
                                     else
@@ -90,8 +90,8 @@ namespace Atla.Lang.Hir
                 | Hir.Expr.StaticMember(clsName, name) => {
                     mutable ty = scope.resolveType(clsName);
                     match (ty.pruned()) {
-                        | Type.Native(nt) => {
-                            def mi = nt.GetMethods().Find(methodInfo => {
+                        | Type.Native as nt => {
+                            def mi = nt.type.GetMethods().Find(methodInfo => {
                                 if (methodInfo.Name == name) {
                                     match (hir.type.pruned()) {
                                         | it is Type.Fn => it.canUnify(methodInfo.toFnType(scope))
@@ -225,11 +225,11 @@ namespace Atla.Lang.Hir
                                     } else
                                         (ty, Some(Either.Left(fis.First().info)))
                                 }
-                                | Type.Native(sysTy) as ty => {
+                                | Type.Native as ty => {
                                     // 定義済みの型
-                                    def fi = sysTy.GetField(name);
+                                    def fi = ty.type.GetField(name);
                                     if (fi == null) {
-                                        def method = sysTy.GetMethod(name, [sysTy].ToArray());
+                                        def method = ty.type.GetMethod(name, [ty.type].ToArray());
                                         if (method == null)
                                             (ty, None())
                                         else
@@ -248,7 +248,7 @@ namespace Atla.Lang.Hir
                                         Result.Failure(Problem(Severity.Error, $"Could not find field $name in $ty.", hir.span))
                                 }
                                 | Some(Either.Right(mi)) => {
-                                    def sym = frame.declareTemp(Type.Native(mi.ReturnType));
+                                    def sym = frame.declareTemp(Type.fromSystemType(mi.ReturnType));
                                     Result.Success(KNormal(proc.Concat([Mir.Ins.CallAssign(sym, mi, [val])]), Some(Mir.Value.Sym(sym))))
                                 }
                                 | _ => Result.Failure(Problem(Severity.Error, $"Could not find field $name in $ty.", hir.span))

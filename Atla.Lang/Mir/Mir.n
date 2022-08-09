@@ -53,6 +53,7 @@ namespace Atla.Lang.Mir
         | Sub
         | Mul
         | Div
+        | Mod
         | Or // 論理演算
         | And
         | Eq // 同値

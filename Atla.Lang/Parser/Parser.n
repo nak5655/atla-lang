@@ -264,7 +264,11 @@ namespace Atla.Lang.Parser
                 
                 def fnStmt: Parser[Token, Stmt] = fn.map(f => Stmt.Fn(f).exSpan(f));
                 
-                stmt.impl = valStmt._or(varStmt)._or(retStmt)._or(fnStmt)._or(assignStmt)._or(exprStmt).onceStmt().consumeBlock();
+                def forStmt = log("stmt_for", delim("for")._and(tid._andL(delim("in"))._and(expr)._andL(delim("=>"))._and(stmt.many()).map((id_e, stmts) => {
+                    Stmt.For(id_e[0].value, id_e[1], stmts).exSpan(id_e[0].span :: stmts.Map(_.span))
+                }).onceStmt()).map((a, b) => b.exSpan(a)));
+                
+                stmt.impl = valStmt._or(varStmt)._or(retStmt)._or(fnStmt)._or(forStmt)._or(assignStmt)._or(exprStmt).onceStmt().consumeBlock();
             }
             
             // Decls

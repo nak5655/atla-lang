@@ -71,6 +71,15 @@ namespace Atla.Lang.Hir
         | Var { mutable id: Hir.Expr.Id; mutable expr: Hir.Expr; isMut: bool; }
         | Assign { mutable id: Hir.Expr.Id; mutable expr: Hir.Expr }
         | Return { mutable expr: Hir.Expr }
+        | For {
+            mutable id: Hir.Expr.Id; mutable iter: Hir.Expr; body: list[Hir.Stmt]; mutable bodyScope: Hir.Scope.Block;
+            
+            public this(id: Hir.Expr.Id, iter: Hir.Expr, body: list[Hir.Stmt]) {
+                this.id = id;
+                this.iter = iter;
+                this.body = body;
+            }
+        }
         
         public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
             match (this) {
@@ -78,6 +87,12 @@ namespace Atla.Lang.Hir
                 | Var as e => e.expr = e.expr.replaceAll(scope, f)
                 | Assign as e => e.expr = e.expr.replaceAll(scope, f)
                 | Return as e => e.expr = e.expr.replaceAll(scope, f)
+                | For as e => {
+                    e.iter = e.iter.replaceAll(scope, f);
+                    foreach (s in e.body) {
+                        s.replaceExpr(e.bodyScope, f)
+                    }
+                }
             }
         }
         
@@ -89,6 +104,7 @@ namespace Atla.Lang.Hir
                 | Var(_, e, _) => e.scanErrors()
                 | Assign(_, e) => e.scanErrors()
                 | Return(e) => e.scanErrors()
+                | For as s => s.iter.scanErrors().Concat(s.body.SelectMany(ss => ss.scanErrors()))
             }
             errors.Map(e => (e, span)).Concat(es)
         }
@@ -228,6 +244,11 @@ namespace Atla.Lang.Hir
             
             public this(symbol: Symbol) {
                 this.name = symbol.name;
+                symbolCache = Some(symbol);
+                type.unify(symbol.type);
+            }
+            
+            public setSymbol(symbol: Symbol): void {
                 symbolCache = Some(symbol);
                 type.unify(symbol.type);
             }

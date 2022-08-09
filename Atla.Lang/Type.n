@@ -165,11 +165,12 @@ namespace Atla.Lang
             }
         }
         | Native {
+            _dummy: int; // Nativeのコンストラクタ―を隠ぺいする (必ずType.fromSystemTypeを使わないといけない)
             public type: System.Type;
             
             public override Equals(other: object): bool {
                 match (other) {
-                    | Native(t) => t.Equals(type)
+                    | Native as it => it.type.Equals(type)
                     | _ => false
                 }
             }
@@ -198,12 +199,13 @@ namespace Atla.Lang
         }
         
         // Primery Types
-        public static Unit: Type.Native = Type.Native(typeof(void));
-        public static Bool: Type.Native = Type.Native(typeof(bool));
-        public static Int: Type.Native = Type.Native(typeof(int));
-        public static Float: Type.Native = Type.Native(typeof(float));
-        public static Double: Type.Native = Type.Native(typeof(double));
-        public static String: Type.Native = Type.Native(typeof(string));
+        public static Unit: Type.Native = Type.Native(0, typeof(void));
+        public static Bool: Type.Native = Type.Native(0, typeof(bool));
+        public static Int: Type.Native = Type.Native(0, typeof(int));
+        public static Float: Type.Native = Type.Native(0, typeof(float));
+        public static Double: Type.Native = Type.Native(0, typeof(double));
+        public static String: Type.Native = Type.Native(0, typeof(string));
+        public static Iterator: Type.Native = Type.Native(0, typeof(System.Collections.IEnumerator));
         
         mutable _systemType: System.Type; // キャッシュ
         public errors: List[TypeError] = List();
@@ -224,7 +226,13 @@ namespace Atla.Lang
                 | (_, OneOf(ts)) => ts.Any(_.canUnify(this)) // thisはprunedしてないので再帰の仕方が少し違うので注意
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x.canUnify(y)) && b.canUnify(d) // 各パラメーターはprunedされてないので注意
                 | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => a.canUnify(c) && bs.Zip(ds).All((b,d) => b.canUnify(d)) // 各パラメーターはprunedされてないので注意
-                | (Native(a), Native(b)) when a.Equals(b) => true // TODO ネイティブの継承を考慮する
+                | (Native as a, Native as b) => {
+                    if (a.type.Equals(b.type))
+                        true
+                    else {
+                        !a.type.findAssignableWith(b.type).Equals(typeof(object)) // objectにunifyできないこともないけど、それだと型安全にならない気がするので?はじく
+                    }
+                }
                 | (Define as a, Define as b) => a.Equals(b)
                 // TODO
                 | _ => false
@@ -268,7 +276,13 @@ namespace Atla.Lang
                 }
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.unify(y)), b.unify(d))
                 | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => Generics(a.unify(c), bs.Zip(ds).Map((b,d) => b.unify(d)))
-                | (Native(a), Native(b)) when a.Equals(b) => this // TODO ネイティブの継承を考慮する
+                | (Native as a, Native as b) => {
+                    if (a.type.Equals(b.type))
+                        a
+                    else {
+                        Type.fromSystemType(a.type.findAssignableWith(b.type))
+                    }
+                }
                 | (Define as a, Define as b) when a.Equals(b) => this
                 // TODO
                 | _ => {
@@ -296,7 +310,7 @@ namespace Atla.Lang
                 | _ => this
             }
         }
-            
+        
         public occursIn(other: Type): bool {
             when (this == other) {
                 return true
@@ -326,7 +340,7 @@ namespace Atla.Lang
             when (_systemType == null) {
                 _systemType = match (this.pruned()) {
                     // TODO
-                    | Native(t) => t
+                    | Native as t => t.type
                     | Define as t => t.info.Value // TODO Noneの時は Result.Failure で返したい
                     | Generics(b, ps) => {
                         def _base = b.ToSystemType();
@@ -374,8 +388,16 @@ namespace Atla.Lang
             _systemType
         }
         
-        public static fromSystemType(t: System.Type): Type {
-            Native(t)
+        // ジェネリクスなどをType.Genericsに統一したりする
+        public static fromSystemType(type: System.Type): Type {    
+            if (type.IsGenericType) {
+                if (type.ContainsGenericParameters)
+                    Type.Native(0, type) // パラメーター未指定
+                else
+                    Type.Generics(fromSystemType(type.GetGenericTypeDefinition()), type.GetGenericArguments().Map(t => fromSystemType(t)).NToList())
+            } else {
+                Type.Native(0, type)
+            }
         }
         
         public override GetHashCode() : int {
@@ -384,7 +406,7 @@ namespace Atla.Lang
                 | Var(t) => t.GetHashCode()
                 | OneOf => (this: object).GetHashCode()
                 | Define => (this: object).GetHashCode()
-                | Native(t) => t.GetHashCode()
+                | Native as t => t.type.GetHashCode()
                 | Fn(args, ret) => args.Sum(_.GetHashCode()) + ret.GetHashCode()
                 | Generics(b, ps) => ps.Sum(_.GetHashCode()) + b.GetHashCode()
                 | Error => (this: object).GetHashCode()
@@ -397,7 +419,7 @@ namespace Atla.Lang
                 | (_, Var(s)) => this.Equals(s)
                 | (Unknown, _) => Object.Equals(this, other)
                 | (Define, _) => Object.Equals(this, other)
-                | (Native(t), Native(s)) => t.Equals(s)
+                | (Native as a, Native as b) => a.type.Equals(b.type)
                 | (Fn(xs, y), Fn(ts, s)) when xs.Length == ts.Length => xs.Zip(ts).All((x, t) => x.Equals(t)) && y.Equals(s)
                 | (Generics(x, ys), Generics(t, ss)) when ys.Length == ss.Length => ys.Zip(ss).All((x, t) => x.Equals(t)) && x.Equals(t)
                 | (Error, _) => Object.Equals(this, other)
@@ -407,8 +429,45 @@ namespace Atla.Lang
         
         public isVoid(): bool {
             match (this.pruned()) {
-                | Native(v) => v == typeof(void)
+                | Native as t => t.type == typeof(void)
                 | _ => false
+            }
+        }
+    }
+    
+    public module TypeExtensions {
+        public findAssignableWith(this type: System.Type, other: System.Type): System.Type {
+            match (type.findBaseClassWith(other)) {
+                | Some(t) => t
+                | _ => match (type.findInterfaceWith(other)) {
+                    | Some(t) => t
+                    | _ => typeof(object)
+                }
+            }
+        }
+        
+        public findBaseClassWith(this type: System.Type, other: System.Type): option[System.Type] {
+            def ts = type.getClassHierarchy().Intersect(other.getClassHierarchy()).Where(t => !t.IsInterface);
+            if (ts.IsEmpty()) None() else Some(ts.First())
+        }
+        
+        public findInterfaceWith(this type: System.Type, other: System.Type): option[System.Type] {
+            def ts = type.getInterfaceHierarchy().Intersect(other.getInterfaceHierarchy());
+            if (ts.IsEmpty()) None() else Some(ts.First())
+        }
+        
+        public getInterfaceHierarchy(this type: System.Type): IEnumerable[System.Type] {
+            if (type.IsInterface)
+                [type]
+            else
+                type.GetInterfaces().OrderByDescending(t => t.getInterfaceHierarchy().Count())
+        }
+        
+        public getClassHierarchy(this type: System.Type): IEnumerable[System.Type] {
+            mutable t = type;
+            while (t != null && !t.IsInterface) {
+                yield t;
+                t = t.BaseType;
             }
         }
     }

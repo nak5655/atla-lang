@@ -19,7 +19,7 @@ namespace Test.HirTest
     {
         [Test]
         public HirTypeUnifyTest1(): void {
-            def tint = Type.Native(typeof(int));
+            def tint = Type.Int;
             def t1 = tint;
             def t2 = Type.OneOf([Type.Var(tint)]);
             def res = t1.unify(t2).pruned();
@@ -116,6 +116,11 @@ namespace Test.HirTest
         [Test]
         public HirGeometryTest(): void {
             codeTest("geometry")
+        }
+        
+        [Test]
+        public HirFizzBuzzTest(): void {
+            codeTest("FizzBuzz")
         }
         
         [Test]

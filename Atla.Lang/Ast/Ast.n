@@ -107,6 +107,7 @@ namespace Atla.Lang.Ast
         | Expr { expr: Ast.Expr }
         | Ret { expr: Ast.Expr }
         | Fn { fn: Ast.Fn }
+        | For { name: string; iter: Ast.Expr; body: list[Stmt] }
         | Error { reason: string }
         
         public scanErrors(): IEnumerable[(string * Span)] {
@@ -118,6 +119,7 @@ namespace Atla.Lang.Ast
                 | Expr(e) => e.scanErrors()
                 | Ret(e) => e.scanErrors()
                 | Fn(f) => f.scanErrors()
+                | For(_, e, b) => e.scanErrors().Concat(b.SelectMany(s => s.scanErrors()))
             }
         }
     }

@@ -1,7 +1,11 @@
-﻿import System::Int32
-import System::Array
+﻿import System::Array
 import System::Console
+import System::Linq::Enumerable
 
 fn main (args: Array String): Unit = do
-    let n = Int32::Parse (Console::ReadLine ())
-    Console::WriteLine (fibonacci n)
+    for i in Enumerable::Range 1 15 =>
+        Console::WriteLine if
+            | i % 15 => "FizzBuzz"
+            | i % 5 => "Buzz"
+            | i % 3 => "Fizz"
+            | else => i.ToString()
