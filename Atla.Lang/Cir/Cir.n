@@ -55,6 +55,7 @@ namespace Atla.Lang.Cir
         | MarkLabel { label: Label }
         | BrS { label: Label } // jump
         | BrTrueS { label: Label }
+        | BrFalseS { label: Label }
     }
     
     [Record]

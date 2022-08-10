@@ -248,7 +248,7 @@ namespace Atla.Lang.Parser
             ];
             def delimSigns = [
                 "->", "~>", "=>", "::",
-                "=", "(", ")", "<", ">", "[", "]", "{", "}", ":", ".", "-" "+", "*", "/", "~", "|", "&" // signs
+                "=", "(", ")", "<", ">", "[", "]", "{", "}", ":", ".", "|" // signs
             ];
             
             opSigns = HashSet("+-*/%|&><!=.");
@@ -266,11 +266,18 @@ namespace Atla.Lang.Parser
                 Token.Comment(content.string, span)
             });
             ws = char(' ')._or(char('\n')); // TODO TabやCRLFなどが来たら即失敗にしたい
-            def delimS = delimSigns.Map(delimiter => {
-                // 記号のデリミタは演算子の記号が続いてはいけない(カッコなどは連続していい)
-                phrase(delimiter, delimiter.ToArray().ToNList(), (i, a) => i.char == a).notFollowedBy(satisfy("", c => opSigns.Contains(c.char))).map(s => {
-                    Token.Delim(SourceString(s))
-                })
+            def delimS = delimSigns.Map(delimiter: string => {
+                // 記号のデリミタは、演算子の記号が続いた結果、演算子になってはいけない
+                if (delimiter.All(c => opSigns.Contains(c))) {
+                    // デリミタが演算子の記号のみで構成されている場合は、演算子の記号が続かないかチェックする
+                    phrase(delimiter, delimiter.ToArray().ToNList(), (i, a) => i.char == a).notFollowedBy(satisfy("", c => opSigns.Contains(c.char))).map(s => {
+                        Token.Delim(SourceString(s))
+                    })
+                } else {
+                    phrase(delimiter, delimiter.ToArray().ToNList(), (i, a) => i.char == a).map(s => {
+                        Token.Delim(SourceString(s))
+                    })
+                }
             }).FoldRight(fail("no matching delimiter"), (a, b) => a._or(b));
             def delimA = delimiters.Map(delimiter => {
                 // アルファベットのデリミタはアルファベット数字アンダーバーが続いてはいけない

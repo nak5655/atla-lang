@@ -11,7 +11,9 @@ using System.IO;
 namespace Test
 {
     public class Misc {
-        public static compiler: Atla.Lang.Compiler = Atla.Lang.Compiler(problem => throw Exception(problem.ToString()));
+        public static compiler(): Atla.Lang.Compiler {
+            Atla.Lang.Compiler(problem => throw Exception(problem.ToString()))
+        }
         
         public static readCase(fileName: string): string {
             File.ReadAllText(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), $"cases\\$(fileName)"))

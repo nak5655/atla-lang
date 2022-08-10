@@ -95,6 +95,12 @@ namespace Atla.Lang.Mir
                     def cirLabel = labelTable.Get(label).Value;
                     load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrTrueS(cirLabel)]))
                 }
+                | Mir.Ins.JumpFalse(pred, label) => {
+                    when (!labelTable.ContainsKey(label))
+                        labelTable.Add(label, Cir.Label());
+                    def cirLabel = labelTable.Get(label).Value;
+                    load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrFalseS(cirLabel)]))
+                }
                 | Mir.Ins.RetValue(v) => load(frame, v).map(ld => ld.Concat([Cir.Ins.Ret()]))
                 | Mir.Ins.Ret => Result.Success([Cir.Ins.Ret()])
             }

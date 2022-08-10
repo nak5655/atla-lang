@@ -185,6 +185,7 @@ namespace Atla.Lang.Hir
                             
                             _ = hir.type.unify(y)
                         }
+                        | Type.OneOf => ()
                         | Type.Error => () // エラーならそれ以上推論しない
                         | t => fn.type.errors.Add(TypeError.InferenceFailure($"Could not infer $t as a function."))
                     }

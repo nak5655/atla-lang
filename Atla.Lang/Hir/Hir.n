@@ -122,7 +122,7 @@ namespace Atla.Lang.Hir
         
         public replaceExpr(scope: Hir.Scope, f: Hir.Scope * Hir.Expr -> Hir.Expr): void {
             this.pred = this.pred.replaceAll(scope, f);
-            this.body = this.pred.replaceAll(bodyScope, f);
+            this.body = this.body.replaceAll(bodyScope, f);
         }
         
         public scanErrors(): IEnumerable[(Error * Span)] {

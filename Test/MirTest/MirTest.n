@@ -16,52 +16,36 @@ namespace Test.MirTest
     [TestFixture]
     class MirTest
     {
-        [Test]
-        public MirEasyTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
+        codeTest(caseName: string): void {
+            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile($"MirTest_$caseName.exe"));
             asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
-            def code = Misc.readCase("hello.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
-            def _mir = Misc.compiler.compileHirToMir(asm);
+            def code = Misc.readCase($"$caseName.atla");
+            def compiler = Misc.compiler();
+            _ = compiler.updateModule(asm, "main", code).Value;
+            compiler.compileHirToThir(asm);
+            def _mir = compiler.compileHirToMir(asm);
             def mir = _mir.Value.modules["main"];
         }
         
         [Test]
         public MirFibonacciTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
-            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
-            
-            def code = Misc.readCase("fibonacci.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
-            def _mir = Misc.compiler.compileHirToMir(asm);
-            def mir = _mir.Value.modules["main"];
+            codeTest("fibonacci")
         }
         
         [Test]
         public MirGeometryTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
-            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
-            
-            def code = Misc.readCase("geometry.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
-            def _mir = Misc.compiler.compileHirToMir(asm);
-            def mir = _mir.Value.modules["main"];
+            codeTest("geometry")
         }
         
         [Test]
         public MirCountUpTest(): void {
-            def asm = Atla.Lang.Hir.Assembly("Test", Misc.tempFile("MirTest.exe"));
-            asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
-            
-            def code = Misc.readCase("countup.atla");
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
-            def _mir = Misc.compiler.compileHirToMir(asm);
-            def mir = _mir.Value.modules["main"];
+            codeTest("countup")
+        }
+        
+        [Test]
+        public MirFizzBuzzTest(): void {
+            codeTest("FizzBuzz")
         }
     }
 }

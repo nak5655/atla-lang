@@ -34,11 +34,6 @@ namespace Test.AstTest
         }
         
         [Test]
-        public EasyAstTest(): void {
-            codeTest("import a.\nfn a");
-        }
-        
-        [Test]
         public AstFibonacciTest(): void {
             codeTest(Misc.readCase("fibonacci.atla"));
         }

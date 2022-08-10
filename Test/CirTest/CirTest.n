@@ -6,7 +6,9 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+
 using NUnit.Framework;
+
 using Atla.Lang.Cir;
 
 namespace Test.CirTest
@@ -20,11 +22,12 @@ namespace Test.CirTest
             asm.scope = Atla.Lang.Hir.Scope.Assembly(Atla.Lang.Hir.Scope.Global(), asm.name);
             
             def code = Misc.readCase(caseFileName);
-            _ = Misc.compiler.updateModule(asm, "main", code);
-            Misc.compiler.compileHirToThir(asm);
+            def compiler = Misc.compiler();
+            _ = compiler.updateModule(asm, "main", code).Value;
+            compiler.compileHirToThir(asm);
             
-            def mir = Misc.compiler.compileHirToMir(asm).Value;
-            def _cir = Misc.compiler.compileMirToCir(Misc.compiler.compileHirToMir(asm).Value);
+            def mir = compiler.compileHirToMir(asm).Value;
+            def _cir = compiler.compileMirToCir(mir);
             def cir = _cir.Value;
             
             Atla.Lang.Cir.Emit().emit(cir);
@@ -48,6 +51,11 @@ namespace Test.CirTest
         [Test]
         public CirCountUpTest(): void {
             codeTest("countup")
+        }
+        
+        [Test]
+        public CirFizzBuzzTest(): void {
+            codeTest("FizzBuzz")
         }
         
         //[Test]

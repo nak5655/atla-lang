@@ -52,34 +52,14 @@ namespace Atla.Lang.Hir
                     }
                 }
                 | Hir.Expr.Member(expr, name) => {
-                    trans(frame, scope, hir).bind(instKn => match (instKn) {
+                    trans(frame, scope, expr).bind(instKn => match (instKn) {
                         | KNormal(proc, Some(inst)) => {
                             def instTy = expr.type.pruned();
-                            match (instTy) {
-                                | Type.Define as define => {
-                                    // インスタンスメソッドなので自分自身を引数に含むはず
-                                    def fnType = match (hir.type.pruned()) {
-                                        | Type.Fn(args, ret) => Type.Fn(instTy :: args, ret)
-                                        | t => Type.Fn([instTy], t) // 引数は自分自身のみ
-                                    }
-                                    def methods = define.methods.Filter(method => method.name == name && method.fn.type.canUnify(fnType));
-                                    if (methods.Count() == 0) {
-                                        Result.Failure(Problem(Severity.Error, $"Could not find a member $name in $define.", expr.span))
-                                    } else {
-                                        Result.Success(Callable.InstanceMethod(proc, inst, methods.First().info.Value))
-                                    }
-                                }
-                                | Type.Native as t => {
-                                     // インスタンスメソッドなので自分自身を引数に含むはず
-                                    def fnArgs = match (hir.type.pruned()) {
-                                        | Type.Fn(args, _) => args
-                                        | _ => [] // 引数は自分自身のみ
-                                    }
-                                    def method = t.type.GetMethod(name, (instTy :: fnArgs).Map(_.ToSystemType()).ToArray());
-                                    if (method != null)
-                                        Result.Success(Callable.InstanceMethod(proc, inst, method))
-                                    else
-                                        Result.Failure(Problem(Severity.Error, $"Could not find method $name in $t.", expr.span))
+                            def (_, m) = instTy.findMember(name, hir.type);
+                            
+                            match (m) {
+                                | Some(Either.Right(MethodInfo as mi)) => {
+                                    Result.Success(Callable.InstanceMethod(proc, inst, mi))
                                 }
                                 | _ => Result.Failure(Problem(Severity.Error, $"$instTy has no members.", expr.span))
                             }
@@ -113,6 +93,21 @@ namespace Atla.Lang.Hir
             }
         }
         
+        declareId(frame: Frame, scope: Hir.Scope, id: Hir.Expr.Id): Result[Symbol, Problem] {
+            match (id.getSymbol(scope)) {
+                | Some(sym) => {
+                    if (sym.isLocal()) {
+                        frame.declareLocal(sym);
+                            
+                        Result.Success(sym)
+                    } else {
+                        Result.Failure(Problem(Severity.Error, $"$(id.name) is not declared as local variable.", id.span))
+                    }
+                }
+                | _ => Result.Failure(Problem(Severity.Error, $"$(id.name) does not exist in scope.", id.span))
+            }
+        }
+        
         public trans(frame: Frame, scope: Hir.Scope, hir: Hir.Stmt): Result[IEnumerable[Mir.Ins], Problem] {
             match (hir) {
                 | Hir.Stmt.Expr(e) => trans(frame, scope, e).bind(a: KNormal => match (a) {
@@ -120,22 +115,13 @@ namespace Atla.Lang.Hir
                     | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", hir.span))
                 })
                 | Hir.Stmt.Var(id, expr, _) => {
-                    match (id.getSymbol(scope)) {
-                        | Some(sym) => {
-                            if (sym.isLocal()) {
-                                frame.declareLocal(sym);
-                            
-                                def re = trans(frame, scope, expr);
-                                re.bind(kn => match (kn) {
-                                    | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(sym, res)]))
-                                    | _ => Result.Failure(Problem(Severity.Error, $"$expr has no value.", expr.span))
-                                })
-                            } else {
-                                Result.Failure(Problem(Severity.Error, $"$(id.name) is not declared as local variable.", id.span))
-                            }
-                        }
-                        | _ => Result.Failure(Problem(Severity.Error, $"$(id.name) does not exist in scope.", id.span))
-                    }
+                    declareId(frame, scope, id).bind(sym => {
+                        def re = trans(frame, scope, expr);
+                        re.bind(kn => match (kn) {
+                            | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(sym, res)]))
+                            | _ => Result.Failure(Problem(Severity.Error, $"$expr has no value.", expr.span))
+                        })
+                    })
                 }
                 | Hir.Stmt.Assign(id, expr) => {
                     match (id.getSymbol(scope)) {
@@ -150,26 +136,52 @@ namespace Atla.Lang.Hir
                     }
                 }
                 | Hir.Stmt.Return(e) => {
-                    mutable retScope = scope;
-                    while (true) {
-                        match (retScope) {
-                            | it is Hir.Scope.Block => _ = trans(frame, scope, e).bind(a: KNormal => match (a) {
-                                // ブロックスコープならReturnじゃなくてJumpする
-                                | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(it.retSymbol, res), Mir.Ins.Jump(it.endLabel)]))
-                                | KNormal(proc, _) => Result.Success(proc.Concat([Mir.Ins.Jump(it.endLabel)]))
-                                | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", e.span))
-                            })
-                            | Hir.Scope.Fn => _ = trans(frame, scope, e).bind(a: KNormal => match (a) {
-                                | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.RetValue(res)]))
-                                | KNormal(proc, _) => Result.Success(proc.Concat([Mir.Ins.Ret()]))
-                                | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", e.span))
-                            })
-                            | _ => {}
-                        }
+                    match (scope) {
+                        | it is Hir.Scope.Block => trans(frame, scope, e).bind(a: KNormal => match (a) {
+                            // ブロックスコープならReturnじゃなくてJumpする
+                            | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.Assign(it.retSymbol, res), Mir.Ins.Jump(it.endLabel)]))
+                            | KNormal(proc, _) => Result.Success(proc.Concat([Mir.Ins.Jump(it.endLabel)]))
+                            | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", e.span))
+                        })
+                        | Hir.Scope.Fn => trans(frame, scope, e).bind(a: KNormal => match (a) {
+                            | KNormal(proc, Some(res)) => Result.Success(proc.Concat([Mir.Ins.RetValue(res)]))
+                            | KNormal(proc, _) => Result.Success(proc.Concat([Mir.Ins.Ret()]))
+                            | _ => Result.Failure(Problem(Severity.Error, $"Could not interpret $e as a value.", e.span))
+                        })
+                        | _ => Result.Failure(Problem(Severity.Error, $"Could not find the return destination. $hir", hir.span))
                     }
-                    Result.Failure(Problem(Severity.Error, $"Could not find the return destination. $hir", hir.span))
                 }
-                // TODO
+                | Hir.Stmt.For as st => {
+                    def rIter = trans(frame, scope, st.iter);
+                    
+                    declareId(frame, scope, st.id).bind(_ => {
+                        // Iteratorの型を確認
+                        match (st.iter.type.pruned()) {
+                            | Type.Generics(Type.Native as it, [itemType]) when it.type.getInterfaceHierarchy().Contains(Type.Iterator.type) => {
+                                rIter.bind(nIter => st.body.Map(s => trans(frame, st.bodyScope, s)).seq().bind(body => {
+                                    match (nIter.value) {
+                                        | Some(iter) => {
+                                            def begin = Mir.Label();
+                                            def end = Mir.Label();
+                                        
+                                            def hasNext = frame.declareTemp(itemType);
+                                            def cond = [
+                                                Mir.Ins.CallAssign(hasNext, Type.Iterator.type.GetMethod("MoveNext"), [iter]),
+                                                Mir.Ins.JumpFalse(Mir.Value.Sym(hasNext), end)
+                                            ];
+                                            // Iteratorの初期化 -> ループ先頭ラベル -> ループ脱出判断 -> 本体 -> ループ先頭へジャンプ -> ループ終了ラベル
+                                            Result.Success(nIter.proc.Concat(Mir.Ins.MarkLabel(begin) :: cond).Concat(body.flatten()).Concat([
+                                                Mir.Ins.Jump(begin), Mir.Ins.MarkLabel(end)
+                                            ]))
+                                        }
+                                        | _ => Result.Failure(Problem(Severity.Error, "Failed to translate an iterator as a value.", hir.span))
+                                    }
+                                }))
+                            }
+                            | t => Result.Failure(Problem(Severity.Error, $"Expected an iterator, but got $t.", hir.span))
+                        }
+                    })
+                }
             }
         }
         
@@ -208,36 +220,7 @@ namespace Atla.Lang.Hir
                 | Hir.Expr.Member(expr, name) => {
                     match (trans(frame, scope, expr)) {
                         | Result.Success(KNormal(proc, Some(val))) => {
-                            def (ty, mfimi) = match (expr.type.pruned()) {
-                                | Type.Define as ty => {
-                                    // 定義中の型
-                                    def fis = ty.fields.Filter(fi => fi.name == name);
-                                    if (fis.Count() == 0) {
-                                        def fnType = match (hir.type.pruned()) {
-                                            | Type.Fn(args, ret) => Type.Fn(ty :: args, ret) // インスタンスメソッド
-                                            | _ => Type.Fn([ty], hir.type); // 自分自身のみを引数とするインスタンスメソッド
-                                        };
-                                        def mis = ty.methods.Filter(mi => mi.name == name && mi.fn.type.canUnify(fnType));
-                                        if (mis.Count() == 0)
-                                            (ty, None())
-                                        else
-                                            (ty, Some(Either.Right(mis.First().info.Value)))
-                                    } else
-                                        (ty, Some(Either.Left(fis.First().info)))
-                                }
-                                | Type.Native as ty => {
-                                    // 定義済みの型
-                                    def fi = ty.type.GetField(name);
-                                    if (fi == null) {
-                                        def method = ty.type.GetMethod(name, [ty.type].ToArray());
-                                        if (method == null)
-                                            (ty, None())
-                                        else
-                                            (ty, Some(Either.Right(method)))
-                                    } else
-                                        (ty, Some(Either.Left(fi)))
-                                }
-                            };
+                            def (ty, mfimi) = expr.type.findMember(name, hir.type);
                             
                             match (mfimi) {
                                 | Some(Either.Left(fi)) => {
@@ -288,6 +271,21 @@ namespace Atla.Lang.Hir
                                 def tmp = frame.declareTemp(m.ReturnType);
                             
                                 Result.Success(KNormal(procArgs.Concat([Mir.Ins.CallAssign(tmp, m, resArgs)]), Some(Mir.Value.Sym(tmp))))
+                            }
+                        }
+                        | Result.Success(Callable.InstanceMethod(proc, inst, mi)) => {
+                            // 引数がvoidのみの時
+                            when (args.Length == 1 && args.First().type.isVoid()) {
+                                procArgs = [];
+                                resArgs = [];
+                            }
+                            if (mi.ReturnType == typeof(void)) {
+                                // 返り値がvoidのとき
+                                Result.Success(KNormal(procArgs.Concat(proc).Concat([Mir.Ins.Call(Either.Left(mi), inst :: resArgs)]), None()))
+                            } else {
+                                def tmp = frame.declareTemp(mi.ReturnType);
+                            
+                                Result.Success(KNormal(procArgs.Concat(proc).Concat([Mir.Ins.CallAssign(tmp, mi, inst :: resArgs)]), Some(Mir.Value.Sym(tmp))))
                             }
                         }
                         | Result.Success(Callable.Inline(proc)) => {
@@ -591,6 +589,75 @@ namespace Atla.Lang.Hir
                 
             }
             Result.Success(mir)
+        }
+    }
+    
+    public module HirTransExtensions {
+        public findMember(this type: Type, name: string, expected: Type): Type * option[Either[FieldInfo, MethodInfo]] {
+            match (type.pruned()) {
+                | Type.Define as ty => {
+                    // 定義中の型
+                    def fis = ty.fields.Filter(fi => fi.name == name);
+                    if (fis.Count() == 0) {
+                        def fnType = match (expected.pruned()) {
+                            | Type.Fn(args, ret) => Type.Fn(ty :: args, ret) // インスタンスメソッド
+                            | _ => Type.Fn([ty], expected); // 自分自身のみを引数とするインスタンスメソッド
+                        };
+                        def mis = ty.methods.Filter(mi => mi.name == name && mi.fn.type.canUnify(fnType));
+                        if (mis.Count() == 0)
+                            (ty, None())
+                        else
+                            (ty, Some(Either.Right(mis.First().info.Value)))
+                    } else
+                        (ty, Some(Either.Left(fis.First().info)))
+                }
+                | Type.Native as ty => {
+                    // 定義済みの型
+                    def fi = ty.type.GetField(name);
+                    if (fi == null) {
+                        mutable methods = ty.type.GetMethods().Where(m => m.Name == name);
+                        match (expected.pruned()) {
+                            | Type.Fn as fnType => {
+                                // 期待される関数の型で判別
+                                def args = fnType.args.ToList();
+                                when (args.Count() > 0 && args.First().canUnify(ty)) { // インスタンス関数なら自分の型が先頭にあるはずなのでそれを除く
+                                    args.RemoveAt(0)
+                                }
+                                when (args.Count() == 1 && args.First().isVoid()) { // unitが唯一の引数ならそれを除く
+                                    args.RemoveAt(0)
+                                }
+                                // ここで、インスタンス関数やUnitのみ引数にとる関数は引数なしとなる
+                                
+                                methods = methods.Where(m => {
+                                    def ps = m.GetParameters().NToList();
+                                    ps.Count() == args.Count() && ps.Zip(args.NToList()).All((p, arg) => {
+                                        // 期待される引数の型が実際の関数の型に受け入れられるか確認
+                                        if (p.ParameterType.IsInterface)
+                                            arg.ToSystemType().getInterfaceHierarchy().Contains(p.ParameterType)
+                                        else
+                                            arg.ToSystemType().getClassHierarchy().Contains(p.ParameterType)
+                                    })
+                                });
+                                
+                                if (methods.Count() == 1)
+                                    (ty, Some(Either.Right(methods.First())))
+                                else
+                                    (ty, None())
+                            }
+                            | _ => {
+                                if (methods.Count() == 1)
+                                    (ty, Some(Either.Right(methods.First())))
+                                else
+                                    (ty, None())
+                            }
+                        }
+                    } else
+                        (ty, Some(Either.Left(fi)))
+                }
+                | Type.Generics(b, _) => {
+                    b.findMember(name, expected)
+                }
+            }
         }
     }
 }

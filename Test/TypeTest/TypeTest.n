@@ -26,7 +26,15 @@ namespace Test.TypeTest
         }
         
         [Test]
-        public TypeOneOfUnifyTest(): void {
+        public TypeOneOfUnifyTest1(): void {
+            def t1 = Type.Int;
+            def t2 = Type.OneOf([Type.Var(Type.Int)]);
+            def res = t1.unify(t2).pruned();
+            Assert.AreEqual(t1, res);
+        }
+        
+        [Test]
+        public TypeOneOfUnifyTest2(): void {
             def a = Type.Var(Type.Fn([Type.Var(Type.OneOf([Type.Double]))], Type.Unknown()));
             def b = Type.OneOf([Type.Fn([Type.Double], Type.Unit)]);
             

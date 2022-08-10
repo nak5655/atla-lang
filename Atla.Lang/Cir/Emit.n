@@ -76,6 +76,7 @@ namespace Atla.Lang.Cir
                 | Cir.Ins.MarkLabel(label) => gen.MarkLabel(label.get(gen))
                 | Cir.Ins.BrS(label) => gen.Emit(OpCodes.Br_S, label.get(gen))
                 | Cir.Ins.BrTrueS(label) => gen.Emit(OpCodes.Brtrue_S, label.get(gen))
+                | Cir.Ins.BrFalseS(label) => gen.Emit(OpCodes.Brfalse_S, label.get(gen))
             }
         }
         

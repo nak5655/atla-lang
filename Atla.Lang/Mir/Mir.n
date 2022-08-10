@@ -140,6 +140,14 @@ namespace Atla.Lang.Mir
                 $"JumpTrue $value $label"
             }
         }
+        | JumpFalse {
+            value: Value;
+            label: Label;
+            
+            public override ToString(): string {
+                $"JumpFalse $value $label"
+            }
+        }
         | MarkLabel {
             label: Label;
             
