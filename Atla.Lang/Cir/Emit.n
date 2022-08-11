@@ -70,6 +70,7 @@ namespace Atla.Lang.Cir
                 | Cir.Ins.Eq  => gen.Emit(OpCodes.Ceq)
                 | Cir.Ins.Call(Either.Left(method)) => gen.Emit(OpCodes.Call, method)
                 | Cir.Ins.Call(Either.Right(ctor)) => gen.Emit(OpCodes.Call, ctor)
+                | Cir.Ins.CallVirt(method) => gen.Emit(OpCodes.Callvirt, method)
                 | Cir.Ins.NewObj(ctor) => gen.Emit(OpCodes.Newobj, ctor)
                 | Cir.Ins.Ret => gen.Emit(OpCodes.Ret)
                 | Cir.Ins.Nop => gen.Emit(OpCodes.Nop)

@@ -49,6 +49,7 @@ namespace Atla.Lang.Cir
         | And
         | Eq
         | Call { method: Either[MethodInfo, ConstructorInfo] }
+        | CallVirt { method: MethodInfo }
         | NewObj { ctor: ConstructorInfo }
         | Ret
         | Nop

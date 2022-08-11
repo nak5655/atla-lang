@@ -69,10 +69,17 @@ namespace Atla.Lang.Mir
                 | Mir.Ins.Assign(sym, rhs) => load(frame, rhs).bind(vs => store(frame, sym).map(st => vs.Concat(st)))
                 | Mir.Ins.AssignField(sym, field, rhs) => load(frame, rhs).bind(vs => load(frame, Mir.Value.Sym(sym)).map(ld => ld.Concat(vs).Concat([Cir.Ins.StFld(field)])))
                 | Mir.Ins.Call(mi, args) => {
-                    args.Map(a => load(frame, a)).seq().map(vs => vs.flatten().Concat([Cir.Ins.Call(mi)]))
+                    // 仮想メソッドなら命令を変える
+                    def call = match (mi) {
+                        | Either.Left(m) when m.IsVirtual => Cir.Ins.CallVirt(m)
+                        | _ => Cir.Ins.Call(mi)
+                    }
+                    args.Map(a => load(frame, a)).seq().map(vs => vs.flatten().Concat([call]))
                 }
                 | Mir.Ins.CallAssign(dst, mi, args) => {
-                    args.Map(a => load(frame, a)).seq().bind(vs => store(frame, dst).map(st => vs.flatten().Concat([Cir.Ins.Call(Either.Left(mi))].Concat(st))))
+                    // 仮想メソッドなら命令を変える
+                    def call = if (mi.IsVirtual) Cir.Ins.CallVirt(mi) else Cir.Ins.Call(Either.Left(mi));
+                    args.Map(a => load(frame, a)).seq().bind(vs => store(frame, dst).map(st => vs.flatten().Concat([call].Concat(st))))
                 }
                 | Mir.Ins.New(dst, ctor, args) => {
                     args.Map(a => load(frame, a)).seq().bind(vs => store(frame, dst).map(st => vs.flatten().Concat([Cir.Ins.NewObj(ctor)].Concat(st))))

@@ -278,17 +278,13 @@ namespace Atla.Lang
                 | (Generic(a, bs), Generic(c, ds)) when bs.Length == ds.Length => Generic(a.unify(c), bs.Zip(ds).Map((b,d) => b.unify(d)))
                 | (Native as a, Native as b) => {
                     // TODO 間に合わせ
-                    if (a.type.getInterfaceHierarchy().Contains(b.type))
-                        a
-                    else if (b.type.getInterfaceHierarchy().Contains(a.type))
-                        a
-                    else {
-                        if (a.type.getClassHierarchy().Contains(b.type))
-                            a
-                        else if (b.type.getClassHierarchy().Contains(a.type))
-                            a
-                        else
-                            Type.Error(TypeError.UnificationFailure(this, other))
+                    if (a.type.getInterfaceHierarchy().Contains(b.type)
+                        || b.type.getInterfaceHierarchy().Contains(a.type)
+                        || a.type.getClassHierarchy().Contains(b.type)
+                        || b.type.getClassHierarchy().Contains(a.type)) {
+                        if (a.type.IsGenericType) a else b
+                    } else {
+                        Type.Error(TypeError.UnificationFailure(this, other))
                     }
                 }
                 | (Define as a, Define as b) when a.Equals(b) => this
