@@ -104,27 +104,76 @@ namespace Atla.Lang.Hir
                 | Member(expr, name) => {
                     typing(scope, expr, Type.Unknown());
                     
-                    def ty = match (expr.type.pruned()) {
-                        | Type.Define as it => {
-                            def fieldsTypes = it.fields.Filter(fi => fi.name == name).Map(_.type);
-                            def methodsTypes = it.methods.Filter(mt => mt.name == name).Map(m => match (m.fn.type.pruned()) {
-                                | Type.Fn(args, ret) when args.Length > 0 => if (args.First().canUnify(it)) {
-                                    // 最初の引数に自身を適用する
-                                    if (args.Length == 1) ret else Type.Fn(args.Tail, ret)
-                                } else {
-                                    null // 最初の引数の型が違う
-                                }
-                                | _ => null // そもそも関数じゃない
-                            }).Filter(t => t != null); // 合わなかった型を除く
-                            def cand = fieldsTypes.Concat(methodsTypes).NToList();
-                            if (cand.Length == 0)
-                                Type.Error(TypeError.InferenceFailure($"Could not find field $name in $(it.name)."))
-                            else
-                                Type.OneOf(cand)
+                    // 最初の引数に自身を適用する
+                    def partialApply(thisType: Type, fnType: Type): Type {
+                        match (fnType.pruned()) {
+                            | Type.Fn(args, ret) when args.Length > 0 => if (args.First().canUnify(thisType)) {
+                                if (args.Length == 1) ret else Type.Fn(args.Tail, ret)
+                            } else {
+                                null // 最初の引数の型が違う
+                            }
+                            | _ => null // そもそも関数じゃない
                         }
-                        // TODO Native
-                        | _ => Type.Unknown()
-                    };
+                    }
+                    
+                    def findMembers(type: Type, genericParams: list[Type]): IEnumerable[Type] {
+                        match (type.pruned()) {
+                            | Type.Define as it => {
+                                def fieldTypes = it.fields.Filter(fi => fi.name == name).Map(_.type);
+                                def methodTypes = it.methods.Filter(mt => mt.name == name).Map(m => partialApply(it, m.fn.type)).Filter(t => t != null); // 合わなかった型を除く
+                                fieldTypes.Concat(methodTypes)
+                            }
+                            | Type.Native as nt => {
+                                def fieldTypes = nt.type.GetFields().Where(fi => fi.Name == name).Map(fi => {
+                                    // TODO 型パラメーターの解決(多分現状動いていない)
+                                    mutable t = fi.GetType();
+                                    if (t.IsGenericParameter) {
+                                        genericParams.Nth(t.GenericParameterPosition)
+                                    } else {
+                                        Type.fromSystemType(t)
+                                    }
+                                });
+                                def methodTypes = nt.type.GetMethods().Where(mi => mi.Name == name && !mi.IsStatic).Map(mi => {
+                                    // TODO 型パラメーターの解決(多分現状動いていない)
+                                    def ps = mi.GetParameters().Map(p => {
+                                        def t = p.GetType();
+                                        if (t.IsGenericParameter) {
+                                            genericParams.Nth(t.GenericParameterPosition)
+                                        } else {
+                                            Type.fromSystemType(t)
+                                        }
+                                    });
+                                    // ここの型パラメーター解決は正しそう
+                                    mutable ret = mi.ReturnType;
+                                    when (ret.IsGenericType && ret.ContainsGenericParameters) {
+                                        ret = ret.GetGenericTypeDefinition().MakeGenericType(genericParams.Map(_.ToSystemType()).ToArray());
+                                    }
+                                    when (ret.IsGenericParameter && ret.ContainsGenericParameters) {
+                                        ret = genericParams.Map(_.ToSystemType()).Nth(ret.GenericParameterPosition);
+                                    }
+                                    
+                                    // 引数がないならUnitを追加
+                                    if (ps.IsEmpty())
+                                        Type.Fn([Type.Unit], Type.fromSystemType(ret))
+                                    else
+                                        Type.Fn(ps.NToList(), Type.fromSystemType(ret))
+                                });
+                                fieldTypes.Concat(methodTypes)
+                            }
+                            | Type.Generic as ge => {
+                                // TODO ジェネリクスが入れ子のときの型パラメーター
+                                findMembers(ge._base, ge._params)
+                            }
+                            | _ => []
+                        }
+                    }
+                    
+                    def members = findMembers(expr.type, []);
+                    def ty = if (members.Count() == 0)
+                        Type.Error(TypeError.InferenceFailure($"Could not find field $name in $(expr.type.pruned())."))
+                    else
+                        Type.OneOf(members.NToList());
+                    
                     _ = hir.type.unify(ty);
                 }
                 | StaticMember(tyName, name) => {
@@ -231,7 +280,7 @@ namespace Atla.Lang.Hir
                 }
                 | Hir.Stmt.For(id, iter, body, bodyScope) => {
                     def itemType = Type.Var();
-                    typing(scope, iter, Type.Generics(Type.Iterator, [itemType])); // Iteratorを期待する
+                    typing(scope, iter, Type.Generic(Type.Iterator, [itemType])); // Iteratorを期待する
                     typing(scope, id, itemType); // Iteratorの要素の型と一致させる
                     foreach (stmt in body) {
                         typing(bodyScope, stmt)

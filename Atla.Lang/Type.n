@@ -69,14 +69,14 @@ namespace Atla.Lang
                 sb.ToString()
             }
         }
-        | Generics { _base: TypeHint; _params: list[TypeHint] }
+        | Generic { _base: TypeHint; _params: list[TypeHint] }
         
         public resolve(scope: TypeScope): Type { match (this) {
             | TypeHint.Unit => Type.Unit
             | TypeHint.None => Type.Unknown()
             | TypeHint.Name(name) => scope.resolveType(name)
             | TypeHint.Fn(args, ret) => Type.Fn(args.Map(arg => arg.resolve(scope)), ret.resolve(scope))
-            | TypeHint.Generics(_base, _params) => Type.Generics(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
+            | TypeHint.Generic(_base, _params) => Type.Generic(_base.resolve(scope), _params.Map(p => p.resolve(scope)))
         }}
     }
     
@@ -187,7 +187,7 @@ namespace Atla.Lang
                 $"Fn($argsStr): $ret"
             }
         }
-        | Generics { _base: Type; _params: list[Type] }
+        | Generic { _base: Type; _params: list[Type] }
         | Error {
             public this(error: TypeError) {
                 this.errors.Add(error);
@@ -225,8 +225,14 @@ namespace Atla.Lang
                 | (OneOf(ts), _) => ts.Any(_._canUnify(other))
                 | (_, OneOf(ts)) => ts.Any(_.canUnify(this)) // thisはprunedしてないので再帰の仕方が少し違うので注意
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => a.Zip(c).All((x,y) => x.canUnify(y)) && b.canUnify(d) // 各パラメーターはprunedされてないので注意
-                | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => a.canUnify(c) && bs.Zip(ds).All((b,d) => b.canUnify(d)) // 各パラメーターはprunedされてないので注意
-                | (Native as a, Native as b) => a.type.Equals(b.type)
+                | (Generic(a, bs), Generic(c, ds)) when bs.Length == ds.Length => a.canUnify(c) && bs.Zip(ds).All((b,d) => b.canUnify(d)) // 各パラメーターはprunedされてないので注意
+                | (Native as a, Native as b) => {
+                    // TODO 間に合わせ
+                    a.type.getInterfaceHierarchy().Contains(b.type)
+                        || b.type.getInterfaceHierarchy().Contains(a.type)
+                        || a.type.getClassHierarchy().Contains(b.type)
+                        || b.type.getClassHierarchy().Contains(a.type)
+                }
                 | (Define as a, Define as b) => a.Equals(b)
                 // TODO
                 | _ => false
@@ -269,8 +275,22 @@ namespace Atla.Lang
                     it
                 }
                 | (Fn(a, b), Fn(c, d)) when a.Length == c.Length => Fn(a.Zip(c).Map((x, y) => x.unify(y)), b.unify(d))
-                | (Generics(a, bs), Generics(c, ds)) when bs.Length == ds.Length => Generics(a.unify(c), bs.Zip(ds).Map((b,d) => b.unify(d)))
-                | (Native as a, Native as b) when a.type.Equals(b.type) => a
+                | (Generic(a, bs), Generic(c, ds)) when bs.Length == ds.Length => Generic(a.unify(c), bs.Zip(ds).Map((b,d) => b.unify(d)))
+                | (Native as a, Native as b) => {
+                    // TODO 間に合わせ
+                    if (a.type.getInterfaceHierarchy().Contains(b.type))
+                        a
+                    else if (b.type.getInterfaceHierarchy().Contains(a.type))
+                        a
+                    else {
+                        if (a.type.getClassHierarchy().Contains(b.type))
+                            a
+                        else if (b.type.getClassHierarchy().Contains(a.type))
+                            a
+                        else
+                            Type.Error(TypeError.UnificationFailure(this, other))
+                    }
+                }
                 | (Define as a, Define as b) when a.Equals(b) => this
                 // TODO
                 | _ => {
@@ -285,7 +305,7 @@ namespace Atla.Lang
                 | Var(t) => t.pruned()
                 | OneOf(ts) => if (ts.Length == 1) ts.First().pruned() else if (ts.Length == 0) Type.Error(TypeError.InferenceFailure("No one match for this type.")) else Type.Error(TypeError.Ambiguous(ts))
                 | Fn(args, ret) => Fn(args.Map(_.pruned()), ret.pruned())
-                | Generics(b, ps) => Generics(b.pruned(), ps.Map(_.pruned()))
+                | Generic(b, ps) => Generic(b.pruned(), ps.Map(_.pruned()))
                 | _ => this
             }
         }
@@ -308,7 +328,7 @@ namespace Atla.Lang
                 | Var(t) => occursIn(t)
                 | OneOf(ts) => ts.All(tt => occursIn(tt)) // 型を構成しているわけではないのでどれかに出現しないならOK 全部はさすがにアウト
                 | Fn(args, ret) => args.Any(arg => occursIn(arg)) || occursIn(ret)
-                | Generics(b, ps) => occursIn(b) || ps.Any(p => occursIn(p))
+                | Generic(b, ps) => occursIn(b) || ps.Any(p => occursIn(p))
                 | _ => false
             }
         }
@@ -317,7 +337,7 @@ namespace Atla.Lang
             def ret = match (this) {
                 | Var(t) => t.scanErrors(defaultSpan)
                 | Fn(args, ret) => args.SelectMany(_.scanErrors(defaultSpan)).Concat(ret.scanErrors(defaultSpan))
-                | Generics(b, ps) => ps.SelectMany(_.scanErrors(defaultSpan)).Concat(b.scanErrors(defaultSpan))
+                | Generic(b, ps) => ps.SelectMany(_.scanErrors(defaultSpan)).Concat(b.scanErrors(defaultSpan))
                 | Define => [] // ここで型定義の内容をスキャンすると無限ループするのでここでエラーチェックはしない（個別にチェックする）
                 | _ => []
             };
@@ -330,17 +350,17 @@ namespace Atla.Lang
                     // TODO
                     | Native as t => t.type
                     | Define as t => t.info.Value // TODO Noneの時は Result.Failure で返したい
-                    | Generics(b, ps) => {
+                    | Generic(b, ps) => {
                         def _base = b.ToSystemType();
-                        if (_base.IsGenericTypeDefinition)
-                            _base.MakeGenericType(ps.Map(_.ToSystemType()).ToArray())
-                        else if (_base == typeof(System.Array)) { // TODO typeofは遅い? キャッシュしたほうがいいかも?
-                            if (ps.Length == 1)
-                                ps.First().ToSystemType().MakeArrayType()
-                            else
-                                throw Exception("Could not make array type of plural types.") // TODO Result[System.Type]
+                        if (_base.IsGenericType) {
+                            _base.GetGenericTypeDefinition().MakeGenericType(ps.Map(_.ToSystemType()).ToArray())
+                        } else if (_base.IsArray || _base == typeof(System.Array)) {
+                            when (ps.Length != 1) {
+                                throw Exception("Could not make array type with $(ps.Length) types.") // TODO Result[System.Type]
+                            }
+                            ps.First().ToSystemType().MakeArrayType()
                         } else {
-                            throw Exception("Notimplemented") // TODO
+                            throw Exception($"$b is not a generic type.")
                         }
                     }
                     | Fn(args, ret) => {
@@ -376,13 +396,12 @@ namespace Atla.Lang
             _systemType
         }
         
-        // ジェネリクスなどをType.Genericsに統一したりする
-        public static fromSystemType(type: System.Type): Type {    
+        // ジェネリクスなどをType.Genericに統一したりする
+        public static fromSystemType(type: System.Type): Type {
             if (type.IsGenericType) {
-                if (type.ContainsGenericParameters)
-                    Type.Native(0, type) // パラメーター未指定
-                else
-                    Type.Generics(fromSystemType(type.GetGenericTypeDefinition()), type.GetGenericArguments().Map(t => fromSystemType(t)).NToList())
+                Type.Generic(Type.Native(0, type), type.GetGenericArguments().Map(t => fromSystemType(t)).NToList())
+            } else if (type.IsGenericParameter) {
+                Type.Unknown()
             } else {
                 Type.Native(0, type)
             }
@@ -396,7 +415,7 @@ namespace Atla.Lang
                 | Define => (this: object).GetHashCode()
                 | Native as t => t.type.GetHashCode()
                 | Fn(args, ret) => args.Sum(_.GetHashCode()) + ret.GetHashCode()
-                | Generics(b, ps) => ps.Sum(_.GetHashCode()) + b.GetHashCode()
+                | Generic(b, ps) => ps.Sum(_.GetHashCode()) + b.GetHashCode()
                 | Error => (this: object).GetHashCode()
             }
         }
@@ -409,7 +428,7 @@ namespace Atla.Lang
                 | (Define, _) => Object.Equals(this, other)
                 | (Native as a, Native as b) => a.type.Equals(b.type)
                 | (Fn(xs, y), Fn(ts, s)) when xs.Length == ts.Length => xs.Zip(ts).All((x, t) => x.Equals(t)) && y.Equals(s)
-                | (Generics(x, ys), Generics(t, ss)) when ys.Length == ss.Length => ys.Zip(ss).All((x, t) => x.Equals(t)) && x.Equals(t)
+                | (Generic(x, ys), Generic(t, ss)) when ys.Length == ss.Length => ys.Zip(ss).All((x, t) => x.Equals(t)) && x.Equals(t)
                 | (Error, _) => Object.Equals(this, other)
                 | _ => false
             }
@@ -445,10 +464,7 @@ namespace Atla.Lang
         }
         
         public getInterfaceHierarchy(this type: System.Type): IEnumerable[System.Type] {
-            if (type.IsInterface)
-                [type]
-            else
-                type.GetInterfaces().OrderByDescending(t => t.getInterfaceHierarchy().Count())
+            [type].Concat(type.GetInterfaces())
         }
         
         public getClassHierarchy(this type: System.Type): IEnumerable[System.Type] {

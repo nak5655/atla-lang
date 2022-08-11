@@ -157,7 +157,7 @@ namespace Atla.Lang.Hir
                     declareId(frame, scope, st.id).bind(_ => {
                         // Iteratorの型を確認
                         match (st.iter.type.pruned()) {
-                            | Type.Generics(Type.Native as it, [itemType]) when it.type.getInterfaceHierarchy().Contains(Type.Iterator.type) => {
+                            | Type.Generic(Type.Native as it, [itemType]) when it.type.getInterfaceHierarchy().Contains(Type.Iterator.type) => {
                                 rIter.bind(nIter => st.body.Map(s => trans(frame, st.bodyScope, s)).seq().bind(body => {
                                     match (nIter.value) {
                                         | Some(iter) => {
@@ -165,14 +165,19 @@ namespace Atla.Lang.Hir
                                             def end = Mir.Label();
                                         
                                             def hasNext = frame.declareTemp(itemType);
-                                            def cond = [
-                                                Mir.Ins.CallAssign(hasNext, Type.Iterator.type.GetMethod("MoveNext"), [iter]),
-                                                Mir.Ins.JumpFalse(Mir.Value.Sym(hasNext), end)
-                                            ];
-                                            // Iteratorの初期化 -> ループ先頭ラベル -> ループ脱出判断 -> 本体 -> ループ先頭へジャンプ -> ループ終了ラベル
-                                            Result.Success(nIter.proc.Concat(Mir.Ins.MarkLabel(begin) :: cond).Concat(body.flatten()).Concat([
-                                                Mir.Ins.Jump(begin), Mir.Ins.MarkLabel(end)
-                                            ]))
+                                            match (st.iter.type.findMember("MoveNext", Type.Fn([], itemType))) {
+                                                | (_, Some(Either.Right(moveNext))) => {
+                                                    def cond = [
+                                                        Mir.Ins.CallAssign(hasNext, moveNext, [iter]),
+                                                        Mir.Ins.JumpFalse(Mir.Value.Sym(hasNext), end)
+                                                    ];
+                                                    // Iteratorの初期化 -> ループ先頭ラベル -> ループ脱出判断 -> 本体 -> ループ先頭へジャンプ -> ループ終了ラベル
+                                                    Result.Success(nIter.proc.Concat(Mir.Ins.MarkLabel(begin) :: cond).Concat(body.flatten()).Concat([
+                                                        Mir.Ins.Jump(begin), Mir.Ins.MarkLabel(end)
+                                                    ]))
+                                                }
+                                                | _ => Result.Failure(Problem(Severity.Error, $"$(st.iter.type) has no member \"MoveNext\".", hir.span))
+                                            }
                                         }
                                         | _ => Result.Failure(Problem(Severity.Error, "Failed to translate an iterator as a value.", hir.span))
                                     }
@@ -654,7 +659,7 @@ namespace Atla.Lang.Hir
                     } else
                         (ty, Some(Either.Left(fi)))
                 }
-                | Type.Generics(b, _) => {
+                | Type.Generic(b, _) => {
                     b.findMember(name, expected)
                 }
             }

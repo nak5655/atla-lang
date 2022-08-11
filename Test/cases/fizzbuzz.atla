@@ -4,8 +4,4 @@ import System::Linq::Enumerable
 
 fn main (args: Array String): Unit = do
     for i in (Enumerable::Range 1 15).GetEnumerator() =>
-        Console::WriteLine if
-            | i % 15 == 0 => "FizzBuzz"
-            | i % 5 == 0 => "Buzz"
-            | i % 3 == 0 => "Fizz"
-            | else => i.ToString()
+        Console::WriteLine "wow"

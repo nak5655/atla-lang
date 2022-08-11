@@ -122,14 +122,14 @@ namespace Atla.Lang.Parser
                 }))._and(delim(")")).map((ab, c) => ab[1].exSpan([ab[0], c]));
                 def typeHintTerm = typeHintParen._or(typeHintFactor);
                 
-                def typeHintGenerics: Parser[Token, TypeHint] = typeHintTerm.many1().map(ts => {
+                def typeHintGeneric: Parser[Token, TypeHint] = typeHintTerm.many1().map(ts => {
                     if (ts.Length == 1)
                         ts.Head
                     else
-                        TypeHint.Generics(ts.Head, ts.Tail)
+                        TypeHint.Generic(ts.Head, ts.Tail)
                 });
                 
-                def typeHintFn: Parser[Token, TypeHint] = typeHintGenerics.sepBy1(delim("->")).map(ts => {
+                def typeHintFn: Parser[Token, TypeHint] = typeHintGeneric.sepBy1(delim("->")).map(ts => {
                     if (ts.Length > 1)
                         TypeHint.Fn(ts.Take(ts.Length - 1).NToList(), ts.Last())
                     else

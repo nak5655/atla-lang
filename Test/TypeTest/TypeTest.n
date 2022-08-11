@@ -6,6 +6,7 @@ using Nemerle.Utility;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Enumerable;
 
 using NUnit.Framework;
 
@@ -41,5 +42,15 @@ namespace Test.TypeTest
             a.unify(b);
             Assert.AreEqual(Type.Double, (a.pruned() :> Type.Fn).args.First());
         }
+        
+        [Test]
+        public TypeGenericUnifyTest(): void {
+            def a = Type.Native(0, typeof(System.Collections.IEnumerable));
+            def b = Type.OneOf([Type.fromSystemType(Range(1, 5).GetType())]);
+            
+            a.unify(b);
+            Assert.IsNotInstanceOf(typeof(Type.Error), a);
+        }
+        
     }
 }
