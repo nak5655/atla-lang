@@ -79,10 +79,28 @@ namespace Atla.Lang.Cir
                 | Cir.Ins.BeginFinallyBlock => gen.BeginFinallyBlock()
                 | Cir.Ins.EndExceptionBlock => gen.EndExceptionBlock()
                 | Cir.Ins.Nop => gen.Emit(OpCodes.Nop)
-                | Cir.Ins.MarkLabel(label) => gen.MarkLabel(label.get(gen))
-                | Cir.Ins.BrS(label) => gen.Emit(OpCodes.Br_S, label.get(gen))
-                | Cir.Ins.BrTrueS(label) => gen.Emit(OpCodes.Brtrue_S, label.get(gen))
-                | Cir.Ins.BrFalseS(label) => gen.Emit(OpCodes.Brfalse_S, label.get(gen))
+                | Cir.Ins.MarkLabel(label) => {
+                    label.ilOffset = gen.ILOffset; // ジャンプ距離を計算するためにオフセットを保持しておく
+                    gen.MarkLabel(label.get(gen));
+                }
+                | Cir.Ins.Br(label) => {
+                    // ジャンプ距離が十分短いときは省略形が使える(1byteまで) labelのILOffsetが未確定(負数)の場合に注意
+                    def offset = label.ilOffset - gen.ILOffset;
+                    def op = if (0 < label.ilOffset && -120 < offset && offset < 120) OpCodes.Br_S else OpCodes.Br;
+                    gen.Emit(op, label.get(gen))
+                }
+                | Cir.Ins.BrTrue(label) => {
+                    // ジャンプ距離が十分短いときは省略形が使える(1byteまで) labelのILOffsetが未確定(負数)の場合に注意
+                    def offset = label.ilOffset - gen.ILOffset;
+                    def op = if (0 < label.ilOffset && -120 < offset && offset < 120) OpCodes.Brtrue_S else OpCodes.Brtrue;
+                    gen.Emit(op, label.get(gen))
+                }
+                | Cir.Ins.BrFalse(label) => {
+                    // ジャンプ距離が十分短いときは省略形が使える(1byteまで) labelのILOffsetが未確定(負数)の場合に注意
+                    def offset = label.ilOffset - gen.ILOffset;
+                    def op = if (0 < label.ilOffset && -120 < offset && offset < 120) OpCodes.Brfalse_S else OpCodes.Brfalse;
+                    gen.Emit(op, label.get(gen))
+                }
             }
         }
         

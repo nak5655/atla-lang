@@ -105,19 +105,19 @@ namespace Atla.Lang.Mir
                     when (!labelTable.ContainsKey(label))
                         labelTable.Add(label, Cir.Label());
                     def cirLabel = labelTable.Get(label).Value;
-                    Result.Success([Cir.Ins.BrS(cirLabel)])
+                    Result.Success([Cir.Ins.Br(cirLabel)])
                 }
                 | Mir.Ins.JumpTrue(pred, label) => {
                     when (!labelTable.ContainsKey(label))
                         labelTable.Add(label, Cir.Label());
                     def cirLabel = labelTable.Get(label).Value;
-                    load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrTrueS(cirLabel)]))
+                    load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrTrue(cirLabel)]))
                 }
                 | Mir.Ins.JumpFalse(pred, label) => {
                     when (!labelTable.ContainsKey(label))
                         labelTable.Add(label, Cir.Label());
                     def cirLabel = labelTable.Get(label).Value;
-                    load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrFalseS(cirLabel)]))
+                    load(frame, pred).map(ld => ld.Concat([Cir.Ins.BrFalse(cirLabel)]))
                 }
                 | Mir.Ins.RetValue(v) => load(frame, v).map(ld => ld.Concat([Cir.Ins.Ret()]))
                 | Mir.Ins.Ret => Result.Success([Cir.Ins.Ret()])

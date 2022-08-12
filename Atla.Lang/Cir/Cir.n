@@ -16,6 +16,7 @@ namespace Atla.Lang.Cir
 {
     public class Label {
         mutable label: option[System.Reflection.Emit.Label];
+        public mutable ilOffset: int = -1;
         
         public this() {
             label = None();
@@ -59,9 +60,9 @@ namespace Atla.Lang.Cir
         | EndExceptionBlock
         | Nop
         | MarkLabel { label: Label }
-        | BrS { label: Label } // jump
-        | BrTrueS { label: Label }
-        | BrFalseS { label: Label }
+        | Br { label: Label } // jump
+        | BrTrue { label: Label }
+        | BrFalse { label: Label }
     }
     
     [Record]
