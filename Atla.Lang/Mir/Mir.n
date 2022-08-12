@@ -155,6 +155,11 @@ namespace Atla.Lang.Mir
                 $"MarkLabel $label"
             }
         }
+        | Try {
+            body: list[Mir.Ins];
+            //catchEntries: List[] // TODO
+            _finally: list[Mir.Ins];
+        }
     }
     
     public class Field {

@@ -282,7 +282,7 @@ namespace Atla.Lang
                         || b.type.getInterfaceHierarchy().Contains(a.type)
                         || a.type.getClassHierarchy().Contains(b.type)
                         || b.type.getClassHierarchy().Contains(a.type)) {
-                        if (a.type.IsGenericType) a else b
+                        TypeExtensions.chooseMoreConcretely(a, b)
                     } else {
                         Type.Error(TypeError.UnificationFailure(this, other))
                     }
@@ -299,7 +299,12 @@ namespace Atla.Lang
         public pruned(): Type {
             match (this) {
                 | Var(t) => t.pruned()
-                | OneOf(ts) => if (ts.Length == 1) ts.First().pruned() else if (ts.Length == 0) Type.Error(TypeError.InferenceFailure("No one match for this type.")) else Type.Error(TypeError.Ambiguous(ts))
+                | OneOf(ts) => if (ts.Length == 1) ts.First().pruned() else if (ts.Length == 0) Type.Error(TypeError.InferenceFailure("No one match for this type.")) else {
+                    match (ts.chooseMostConcretest()) {
+                        | Some(t) => t
+                        | _ => Type.Error(TypeError.Ambiguous(ts))
+                    }
+                }
                 | Fn(args, ret) => Fn(args.Map(_.pruned()), ret.pruned())
                 | Generic(b, ps) => Generic(b.pruned(), ps.Map(_.pruned()))
                 | _ => this
@@ -439,6 +444,12 @@ namespace Atla.Lang
     }
     
     public module TypeExtensions {
+        // typeにotherを渡せるか
+        public canAssignWith(this type: System.Type, other: System.Type): bool {
+            other.getClassHierarchy().Contains(type) || other.getInterfaceHierarchy().Contains(type)
+        }
+        
+        // TODO この辺の関数間違ってるかも
         public findAssignableWith(this type: System.Type, other: System.Type): System.Type {
             match (type.findBaseClassWith(other)) {
                 | Some(t) => t
@@ -469,6 +480,42 @@ namespace Atla.Lang
                 yield t;
                 t = t.BaseType;
             }
+        }
+        
+        // より具象度の高い(DITが深い？)型を返す
+        public static chooseMoreConcretely(a: System.Type, b: System.Type): System.Type {
+            if (a.getClassHierarchy().Contains(b) || a.getInterfaceHierarchy().Contains(b))
+                a
+            else b
+        }
+        
+        // 最も具象度の高い(DITが深い？)型を返す
+        public static chooseMoreConcretely(a: Type, b: Type): Type {
+            match ((a.pruned(), b.pruned())) {
+                | (Native as x, Native as y) => if (chooseMoreConcretely(x.type, y.type) == x.type) x else y
+                | (Fn as x, Fn as y) => {
+                    mutable res = x;
+                    foreach ((p, q) in x.args.Zip(y.args)) {
+                        when (p != q) {
+                            res = if (chooseMoreConcretely(p, q) == p) x else y;
+                        }
+                    }
+                    res
+                }
+                // TODO
+            }
+        }
+        
+        // 最も具象度の高い(DITが深い？)型を返す
+        public static chooseMostConcretest(this types: IEnumerable[Type]): option[Type] {
+            when (types.IsEmpty())
+                return None();
+            
+            mutable res = types.First();
+            foreach (t in types.Skip(1)) {
+                res = chooseMoreConcretely(res, t);
+            }
+            Some(res)
         }
     }
 }

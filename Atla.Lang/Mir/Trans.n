@@ -110,6 +110,19 @@ namespace Atla.Lang.Mir
                 }
                 | Mir.Ins.RetValue(v) => load(frame, v).map(ld => ld.Concat([Cir.Ins.Ret()]))
                 | Mir.Ins.Ret => Result.Success([Cir.Ins.Ret()])
+                | Mir.Ins.Try as tr => {
+                    tr.body.Map(i => trans(frame, i)).seq().bind(b => {
+                        tr._finally.Map(i => trans(frame, i)).seq().map(f => {
+                            def ret = List();
+                            ret.Add(Cir.Ins.BeginExceptionBlock());
+                            ret.AddRange(b.Flatten());
+                            ret.Add(Cir.Ins.BeginFinallyBlock());
+                            ret.AddRange(f.Flatten());
+                            ret.Add(Cir.Ins.EndExceptionBlock());
+                            ret
+                        })
+                    })
+                }
             }
         }
         

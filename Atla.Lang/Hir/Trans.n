@@ -71,20 +71,9 @@ namespace Atla.Lang.Hir
                     mutable ty = scope.resolveType(clsName);
                     match (ty.pruned()) {
                         | Type.Native as nt => {
-                            def mi = nt.type.GetMethods().Find(methodInfo => {
-                                if (methodInfo.Name == name) {
-                                    match (hir.type.pruned()) {
-                                        | it is Type.Fn => it.canUnify(methodInfo.toFnType(scope))
-                                        | _ => true
-                                    }
-                                } else {
-                                    false
-                                }
-                            });
-                            if (mi.IsSome) {
-                                Result.Success(Callable.MethodInfo(mi.Value))
-                            } else {
-                                Result.Failure(Problem(Severity.Error, "$hir does not exist.", hir.span))
+                            match (nt.findMember(name, hir.type)) {
+                                | (_, Some(Either.Right(mi))) => Result.Success(Callable.MethodInfo(mi))
+                                | _ => Result.Failure(Problem(Severity.Error, $"$clsName has no member \"$name\".", hir.span))
                             }
                         }
                         // TODO
@@ -105,6 +94,13 @@ namespace Atla.Lang.Hir
                     }
                 }
                 | _ => Result.Failure(Problem(Severity.Error, $"$(id.name) does not exist in scope.", id.span))
+            }
+        }
+        
+        findMethod(expr: Hir.Expr, name: string, type: Type): Result[MethodInfo, Problem] {
+            match (expr.type.findMember(name, type)) {
+                | (_, Some(Either.Right(mi))) => Result.Success(mi)
+                | _ => Result.Failure(Problem(Severity.Error, $"$(expr.type) has no member \"$name\".", expr.span))
             }
         }
         
@@ -161,37 +157,40 @@ namespace Atla.Lang.Hir
                                 rIter.bind(nIter => st.body.Map(s => trans(frame, st.bodyScope, s)).seq().bind(body => {
                                     match (nIter.value) {
                                         | Some(iter) => {
-                                            def begin = Mir.Label();
+                                            def head = Mir.Label();
+                                            def loop = Mir.Label();
+                                            def endFinally = Mir.Label();
                                             def end = Mir.Label();
                                         
                                             def hasNext = frame.declareTemp(Type.Bool);
-                                            match (st.iter.type.findMember("MoveNext", Type.Fn([], Type.Bool))) {
-                                                | (_, Some(Either.Right(moveNext))) => {
-                                                    match (st.iter.type.findMember("get_Current", Type.Fn([], itemType))) {
-                                                        | (_, Some(Either.Right(getCurrent))) => {
-                                                            match (st.id.getSymbol(scope)) {
-                                                                | Some(item) => {
-                                                                    def getCurrent = [
-                                                                        Mir.Ins.CallAssign(item, getCurrent, [iter]),
-                                                                    ];
-                                                                    def cond = [
-                                                                        Mir.Ins.CallAssign(hasNext, moveNext, [iter]),
-                                                                        Mir.Ins.JumpFalse(Mir.Value.Sym(hasNext), end)
-                                                                    ];
-                                                                    // Iteratorの初期化 -> ループ先頭ラベル -> ループ脱出判断 -> イテレーターを進める -> 本体 -> ループ先頭へジャンプ -> ループ終了ラベル
-                                                                    Result.Success(nIter.proc.Concat(Mir.Ins.MarkLabel(begin) :: cond).Concat(getCurrent).Concat(body.flatten()).Concat([
-                                                                        Mir.Ins.Jump(begin), Mir.Ins.MarkLabel(end)
-                                                                    ]))
-                                                                }
-                                                                | _ => Result.Failure(Problem(Severity.Error, $"Could not find the symbol of $(st.id).", hir.span))
+                                            findMethod(st.iter, "MoveNext", Type.Fn([], Type.Bool)).bind(moveNext => {
+                                                findMethod(st.iter, "get_Current", Type.Fn([], itemType)).bind(getCurrent => {
+                                                    findMethod(st.iter, "Dispose", Type.Fn([], Type.Unit)).bind(dispose => {
+                                                        match (st.id.getSymbol(scope)) {
+                                                            | Some(item) => {
+                                                                def tryHead = [
+                                                                    Mir.Ins.Jump(loop),
+                                                                    Mir.Ins.MarkLabel(head),
+                                                                    Mir.Ins.CallAssign(item, getCurrent, [iter]),
+                                                                ];
+                                                                def tryLoop = [
+                                                                    Mir.Ins.MarkLabel(loop),
+                                                                    Mir.Ins.CallAssign(hasNext, moveNext, [iter]),
+                                                                    Mir.Ins.JumpTrue(Mir.Value.Sym(hasNext), head), // leave命令はCIRのExceptionBlock命令で自動生成される
+                                                                ];
+                                                                def _finally = [
+                                                                    Mir.Ins.JumpFalse(iter, endFinally), // iterがnullならend
+                                                                    Mir.Ins.Call(Either.Left(dispose), [iter]),
+                                                                    Mir.Ins.MarkLabel(endFinally), // endfinally命令はCIRのExceptionBlock命令で自動生成される
+                                                                ];
+                                                                // Iteratorの初期化 -> ループ先頭ラベル -> ループ脱出判断 -> イテレーターを進める -> 本体 -> ループ先頭へジャンプ -> ループ終了ラベル
+                                                                Result.Success(nIter.proc.Concat([Mir.Ins.Try(tryHead.Concat(body.Flatten()).Concat(tryLoop).NToList(), _finally), Mir.Ins.MarkLabel(end)]))
                                                             }
-                                                            
+                                                            | _ => Result.Failure(Problem(Severity.Error, $"Could not find the symbol of $(st.id).", hir.span))
                                                         }
-                                                        | _ => Result.Failure(Problem(Severity.Error, $"$(st.iter.type) has no member \"Current\".", hir.span))
-                                                    }
-                                                }
-                                                | _ => Result.Failure(Problem(Severity.Error, $"$(st.iter.type) has no member \"MoveNext\".", hir.span))
-                                            }
+                                                    })
+                                                })
+                                            })
                                         }
                                         | _ => Result.Failure(Problem(Severity.Error, "Failed to translate an iterator as a value.", hir.span))
                                     }
@@ -612,6 +611,38 @@ namespace Atla.Lang.Hir
     }
     
     public module HirTransExtensions {
+        // 最も具象度の高い(DITが深い？)関数を返す
+        public chooseMostConcretest(this methods: IEnumerable[MethodInfo]): option[MethodInfo] {
+            when (methods.IsEmpty())
+                return None();
+            
+            mutable res = methods.First();
+            foreach (m in methods.Skip(1)) {
+                res = if (res.DeclaringType != m.DeclaringType) {
+                    if (TypeExtensions.chooseMoreConcretely(res.DeclaringType, m.DeclaringType) == res.DeclaringType) {
+                        res
+                    } else {
+                        m
+                    }
+                } else {
+                    mutable resres = res;
+                    foreach ((a, b) in res.GetParameters().NToList().Zip(m.GetParameters().NToList())) {
+                        def at = a.ParameterType;
+                        def bt = b.ParameterType;
+                        when (at != bt) {
+                            resres = if (TypeExtensions.chooseMoreConcretely(at, bt) == at) {
+                                res
+                            } else {
+                                m
+                            }
+                        }
+                    }
+                    resres
+                };
+            }
+            Some(res)
+        }
+        
         public findMember(this type: Type, name: string, expected: Type): Type * option[Either[FieldInfo, MethodInfo]] {
             match (type.pruned()) {
                 | Type.Define as ty => {
@@ -634,8 +665,6 @@ namespace Atla.Lang.Hir
                     // 定義済みの型
                     def fi = ty.type.GetField(name);
                     if (fi == null) {
-                        // 実装が表層の順になるようにメソッドを列挙する
-                        // TODO BaseTypeのメソッドも必要? GetInterfacesは順不同
                         mutable methods = ty.type.GetMethods().Where(m => m.Name == name)
                             .Concat(ty.type.GetInterfaces().SelectMany(i => i.GetMethods().Where(m => m.Name == name)));
                         match (expected.pruned()) {
@@ -654,18 +683,14 @@ namespace Atla.Lang.Hir
                                     def ps = m.GetParameters().NToList();
                                     ps.Count() == args.Count() && ps.Zip(args.NToList()).All((p, arg) => {
                                         // 期待される引数の型が実際の関数の型に受け入れられるか確認
-                                        if (p.ParameterType.IsInterface)
-                                            arg.ToSystemType().getInterfaceHierarchy().Contains(p.ParameterType)
-                                        else
-                                            arg.ToSystemType().getClassHierarchy().Contains(p.ParameterType)
+                                        p.ParameterType.canAssignWith(arg.ToSystemType())
                                     })
-                                });
+                                }).NToList();
                                 
-                                // 一番表層の型の実装を選ぶ(methodsが整列されてないといけない)
-                                if (methods.Count() > 0)
-                                    (ty, Some(Either.Right(methods.First())))
-                                else
-                                    (ty, None())
+                                match (methods.chooseMostConcretest()) {
+                                    | Some(m) => (ty, Some(Either.Right(m)))
+                                    | _ => (ty, None())
+                                }
                             }
                             | _ => {
                                 if (methods.Count() == 1)

@@ -52,6 +52,9 @@ namespace Atla.Lang.Cir
         | CallVirt { method: MethodInfo }
         | NewObj { ctor: ConstructorInfo }
         | Ret
+        | BeginExceptionBlock
+        | BeginFinallyBlock
+        | EndExceptionBlock
         | Nop
         | MarkLabel { label: Label }
         | BrS { label: Label } // jump
