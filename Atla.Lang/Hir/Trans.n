@@ -53,9 +53,17 @@ namespace Atla.Lang.Hir
                 }
                 | Hir.Expr.Member(expr, name) => {
                     trans(frame, scope, expr).bind(instKn => match (instKn) {
-                        | KNormal(proc, Some(inst)) => {
+                        | KNormal(proc, Some(value)) => {
                             def instTy = expr.type.pruned();
                             def (_, m) = instTy.findMember(name, hir.type);
+                            
+                            // プリミティブ型のインスタンス関数は、呼び出し時にアドレスを渡さないといけない
+                            def inst = if (instTy.isPrimitive()) {
+                                match (value) {
+                                    | Mir.Value.Sym(sym) => Mir.Value.Addr(sym)
+                                    | _ => value
+                                }
+                            } else value;
                             
                             match (m) {
                                 | Some(Either.Right(MethodInfo as mi)) => {

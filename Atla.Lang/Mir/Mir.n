@@ -37,12 +37,14 @@ namespace Atla.Lang.Mir
     public variant Value {
         | Imm { value: Mir.Imm }
         | Sym { value: Symbol }
+        | Addr { value: Symbol }
         | Field { inst: Symbol; field: FieldInfo }
         
         public override ToString(): string {
             match (this) {
                 | Imm(v) => $"Imm($v)"
                 | Sym(v) => $"Sym($v)"
+                | Addr(v) => $"Addr($v)"
                 | Field(sym, fi) => $"Field($sym, $fi)"
             }
         }

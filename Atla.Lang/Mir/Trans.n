@@ -30,6 +30,11 @@ namespace Atla.Lang.Mir
                     | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArg(i)])
                     | _ => Result.Failure(Problem(Severity.Error, $"Symbol $sym is invalid.", Span.zero()))
                 }
+                | Mir.Value.Addr(sym) => match (frame.resolve(sym)) {
+                    | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.LdLocA(i)])
+                    | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArgA(i)])
+                    | _ => Result.Failure(Problem(Severity.Error, $"Symbol $sym is invalid.", Span.zero()))
+                }
                 | Mir.Value.Field(inst, field) => match (frame.resolve(inst)) {
                     | Some(FramePosition.Loc(i)) => Result.Success([Cir.Ins.LdLoc(i), Cir.Ins.LdFld(field)])
                     | Some(FramePosition.Arg(i)) => Result.Success([Cir.Ins.LdArg(i), Cir.Ins.LdFld(field)])
@@ -71,6 +76,7 @@ namespace Atla.Lang.Mir
                 | Mir.Ins.Call(mi, args) => {
                     // 仮想メソッドなら命令を変える
                     def call = match (mi) {
+                        | Either.Left(m) when !m.IsStatic && m.DeclaringType.IsPrimitive => Cir.Ins.Call(mi) // プリミティブ型のインスタンス関数はcallvirt使えない? (PEVerifyではじかれる)
                         | Either.Left(m) when m.IsVirtual => Cir.Ins.CallVirt(m)
                         | _ => Cir.Ins.Call(mi)
                     }
@@ -78,7 +84,12 @@ namespace Atla.Lang.Mir
                 }
                 | Mir.Ins.CallAssign(dst, mi, args) => {
                     // 仮想メソッドなら命令を変える
-                    def call = if (mi.IsVirtual) Cir.Ins.CallVirt(mi) else Cir.Ins.Call(Either.Left(mi));
+                    def call = if (!mi.IsStatic && mi.DeclaringType.IsPrimitive)
+                        Cir.Ins.Call(Either.Left(mi)) // プリミティブ型のインスタンス関数はcallvirt使えない? (PEVerifyではじかれる)
+                    else if (mi.IsVirtual)
+                        Cir.Ins.CallVirt(mi)
+                    else
+                        Cir.Ins.Call(Either.Left(mi));
                     args.Map(a => load(frame, a)).seq().bind(vs => store(frame, dst).map(st => vs.flatten().Concat([call].Concat(st))))
                 }
                 | Mir.Ins.New(dst, ctor, args) => {

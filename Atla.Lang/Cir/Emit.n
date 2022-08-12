@@ -34,6 +34,8 @@ namespace Atla.Lang.Cir
                         | _ => gen.Emit(OpCodes.Stloc, index)
                     }
                 }
+                | Cir.Ins.LdLocA(index) => gen.Emit(OpCodes.Ldloca, index)
+                | Cir.Ins.LdArgA(index) => gen.Emit(OpCodes.Ldarga, index)
                 | Cir.Ins.LdArg(index) => {
                     match (index) {
                         | 0 => gen.Emit(OpCodes.Ldarg_0)

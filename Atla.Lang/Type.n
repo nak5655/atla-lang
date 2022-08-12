@@ -295,6 +295,13 @@ namespace Atla.Lang
             }
         }
         
+        public isPrimitive(): bool {
+            match (this.pruned()) {
+                | Native as nt => nt.type.IsPrimitive
+                | _ => false
+            }
+        }
+        
         // thisは変更しないで型変数を可能な限り取り除く
         public pruned(): Type {
             match (this) {

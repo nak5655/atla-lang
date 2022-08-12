@@ -35,6 +35,8 @@ namespace Atla.Lang.Cir
         | StLoc { index: int }
         | LdArg { index: int }
         | StArg { index: int }
+        | LdLocA { index: int }
+        | LdArgA { index: int }
         | LdI32 { value: int }
         | LdF64 { value: double }
         | LdStr { str: string }
