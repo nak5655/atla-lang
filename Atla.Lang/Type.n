@@ -80,7 +80,7 @@ namespace Atla.Lang
         }}
     }
     
-    public class TypeField {
+    public class StructField {
         public name: string;
         mutable symbolCache: option[Symbol];
         public type: Type.Var;
@@ -140,7 +140,7 @@ namespace Atla.Lang
         }
         | Define {
             public name: string;
-            public fields: List[TypeField];
+            public fields: List[StructField];
             public methods: List[Hir.Method];
         
             public mutable scope: Hir.Scope.Type;

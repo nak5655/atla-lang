@@ -124,7 +124,7 @@ namespace Atla.Lang.Ast
         }
     }
     
-    public variant TypeItem: HasSpan[TypeItem] {
+    public variant StructItem: HasSpan[StructItem] {
         | Field { name: string; typeHint: TypeHint; mut: bool; init: option[Expr] }
         | Method { fn: Fn }
         | Error { reason: string }
@@ -139,7 +139,7 @@ namespace Atla.Lang.Ast
     }
     
     public variant Decl: HasSpan[Decl] {
-        | Type { name: string; items: list[TypeItem] }
+        | Struct { name: string; items: list[StructItem] }
         | StaticFn { fn: Ast.Fn.Static }
         | Import { path: list[string] }
         | Error { reason: string }
@@ -148,7 +148,7 @@ namespace Atla.Lang.Ast
             match (this) {
                 | Error(s) => [(s, this.span)]
                 | StaticFn(f) => f.scanErrors()
-                | Type(_, items) => items.SelectMany(_.scanErrors())
+                | Struct(_, items) => items.SelectMany(_.scanErrors())
                 | _ => []
             }
         }

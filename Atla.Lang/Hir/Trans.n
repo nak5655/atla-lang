@@ -462,7 +462,7 @@ namespace Atla.Lang.Hir
             }
             
             // フィールドを定義
-            def fields: List[TypeField * Mir.Field] = List();
+            def fields: List[StructField * Mir.Field] = List();
             foreach (field in tyDef.fields) {
                 def mf = mir.defineField(field.name, field.type.ToSystemType());
                 field.info = mf.builder; // FieldInfoを共有

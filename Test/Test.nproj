@@ -132,6 +132,9 @@
       <SubType>Content</SubType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Content Include="cases\BinTree.atla">
+      <SubType>Content</SubType>
+    </Content>
     <Content Include="packages.config">
       <SubType>Content</SubType>
     </Content>

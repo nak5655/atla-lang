@@ -280,23 +280,23 @@ namespace Atla.Lang.Parser
                     | Fn.Error(s) => Decl.Error(s)
                 });
             
-                // Type
-                def typeValField: Parser[Token, TypeItem] = log("type_val", delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
+                // Struct
+                def structValField: Parser[Token, StructItem] = log("struct_val", delim("val")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
                     def (s, t) = s_t: Token.Id * TypeHint;
-                    TypeItem.Field(s.value, t, false, e)
-                }).onceTypeItem()).map((a, b) => b.exSpan(a)));
-                def typeVarField: Parser[Token, TypeItem] = log("type_var", delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
+                    StructItem.Field(s.value, t, false, e)
+                }).onceStructItem()).map((a, b) => b.exSpan(a)));
+                def structVarField: Parser[Token, StructItem] = log("struct_var", delim("var")._and(tid._andL(delim(":"))._and(typeHint)._and(delim("=")._andR(expr).optional()).map((s_t, e) => {
                     def (s, t) = s_t: Token.Id * TypeHint;
-                    TypeItem.Field(s.value, t, true, e)
-                }).onceTypeItem()).map((a, b) => b.exSpan(a)));
-                def typeMethod: Parser[Token, TypeItem] = log("type_method", fn.map(d => TypeItem.Method(d).exSpan(d)));
-                def typeItem = typeValField._or(typeVarField)._or(typeMethod);
-                def typeDecl = log("type", delim("type")._and(
-                    tid._andL(delim("="))._and(typeItem.many()).map((a, items) => {
+                    StructItem.Field(s.value, t, true, e)
+                }).onceStructItem()).map((a, b) => b.exSpan(a)));
+                def structMethod: Parser[Token, StructItem] = log("struct_method", fn.map(d => StructItem.Method(d).exSpan(d)));
+                def structItem = structValField._or(structVarField)._or(structMethod);
+                def structDecl = log("struct", delim("struct")._and(
+                    tid._andL(delim("="))._and(structItem.many()).map((a, items) => {
                         if (items.Length > 0)
-                            Decl.Type(a.value, items).exSpan(a.span :: items.Map(i => i.span).LastN(1))
+                            Decl.Struct(a.value, items).exSpan(a.span :: items.Map(i => i.span).LastN(1))
                         else
-                            Decl.Type(a.value, items).exSpan(a.span)
+                            Decl.Struct(a.value, items).exSpan(a.span)
                     }).onceDecl()
                 ).map((a, b) => b.exSpan(a)));
             
@@ -311,7 +311,7 @@ namespace Atla.Lang.Parser
                     })._andL(eoi()).onceDecl()
                 ).map((a, b) => b.exSpan(a)));
             
-                decl.impl = importDecl._or(typeDecl)._or(modFnDecl).consumeBlock();
+                decl.impl = importDecl._or(structDecl)._or(modFnDecl).consumeBlock();
             }
             
             mod = decl.many().map(ds => {
@@ -357,10 +357,10 @@ namespace Atla.Lang.Parser
             })
         }
         
-        public onceTypeItem(this p: Parser[Token, TypeItem]): Parser[Token, TypeItem] {
+        public onceStructItem(this p: Parser[Token, StructItem]): Parser[Token, StructItem] {
             p.skipFail(ret => {
-                def failure = (ret :> ParseResult[Token, TypeItem].Failure).error : ParseFailure[Token]; // ret is always failure
-                def ret = TypeItem.Error(failure.reason);
+                def failure = (ret :> ParseResult[Token, StructItem].Failure).error : ParseFailure[Token]; // ret is always failure
+                def ret = StructItem.Error(failure.reason);
                 ret.span = failure.failAt.position() :> Span;
                 ret
             })

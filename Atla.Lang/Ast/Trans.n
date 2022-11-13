@@ -138,18 +138,18 @@ namespace Atla.Lang.Ast
             }
         }
         
-        public trans(ast: Ast.Decl.Type): Result[Type.Define, Problem] {
+        public trans(ast: Ast.Decl.Struct): Result[Type.Define, Problem] {
             def ty = Type.Define(ast.name);
             foreach (item in ast.items) {
                 _ = match (item) {
-                    | Ast.TypeItem.Field as p => ty.fields.Add(TypeField(p.name, trans(Some(p.typeHint))))
-                    | Ast.TypeItem.Method as m => {
+                    | Ast.StructItem.Field as p => ty.fields.Add(StructField(p.name, trans(Some(p.typeHint))))
+                    | Ast.StructItem.Method as m => {
                         match (trans(m.fn)) {
                             | Result.Success(mm) => ty.methods.Add(mm)
                             | Result.Failure(e) => return Result.Failure(e)
                         }
                     }
-                    | Ast.TypeItem.Error as e => return Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
+                    | Ast.StructItem.Error as e => return Result.Failure(Problem(Severity.Error, e.ToString(), ast.span))
                 }
             }
             
@@ -167,7 +167,7 @@ namespace Atla.Lang.Ast
                             return Result.Failure(r.getError().Value);
                         mod.methods.Add(r.getResult().Value);
                     }
-                    | Ast.Decl.Type as t => {
+                    | Ast.Decl.Struct as t => {
                         def r = trans(t);
                         when (r.isFailure())
                             return Result.Failure(r.getError().Value);

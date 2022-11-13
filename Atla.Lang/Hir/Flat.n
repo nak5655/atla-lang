@@ -73,7 +73,7 @@ namespace Atla.Lang.Hir
                     
                     // 自由変数をフィールドとして定義
                     foreach ((name, sym) in freeVars) {
-                        def field = TypeField(name, TypeHint.None());
+                        def field = StructField(name, TypeHint.None());
                         _ = field.type.unify(sym.type);
                         fClass.fields.Add(field);
                     }

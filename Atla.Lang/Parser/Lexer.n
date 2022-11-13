@@ -241,7 +241,7 @@ namespace Atla.Lang.Parser
             });
         
             delimiters = [
-                "val", "var", "fn", "mod", "def", "use", "import", "type", "this", "trait", "impl", // declarations
+                "val", "var", "fn", "mod", "def", "use", "import", "struct", "this", "trait", "impl", // declarations
                 "for", "in", "if", "else", "match", "do", "while", // control flows
                 "return", "continue", "break", // block
                 "true", "false", // boolean

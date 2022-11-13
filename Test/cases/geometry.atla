@@ -2,11 +2,11 @@
 import System::Array
 import System::Math
 
-type Point =
+struct Point =
     var x: Double
     var y: Double
 
-type Segment =
+struct Segment =
     var fst: Point
     var snd: Point
 
