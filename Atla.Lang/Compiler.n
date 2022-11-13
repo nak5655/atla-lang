@@ -118,6 +118,7 @@ namespace Atla.Lang
         }
         
         public compile(asm: Hir.Assembly): void {
+            compileHirToThir(asm);
             match (compileHirToMir(asm)) {
                 | Some(mir) => {
                     match (compileMirToCir(mir)) {
